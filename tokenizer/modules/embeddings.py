@@ -1,6 +1,4 @@
-import torch
-import torch.nn as nn
-import math
+from imports import *
 
 class InputEmbeddings(nn.Module):
     def __init__(self, d_model: int, vocab_size: int):
