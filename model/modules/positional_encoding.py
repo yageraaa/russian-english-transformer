@@ -1,4 +1,6 @@
-from imports import *
+import torch
+import torch.nn as nn
+import math
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_seq_len: int, dropout: float):
