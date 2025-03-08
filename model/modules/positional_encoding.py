@@ -18,11 +18,9 @@ if __name__ == "__main__":
     d_model = 512
     max_len = 100
     pe = PositionalEncoding(d_model, max_len)
-
     batch_size = 5
     seq_len = 10
     embeddings = torch.rand(batch_size, seq_len, d_model)
-
     output = pe(embeddings)
 
     print("Input embeddings shape:", embeddings.shape)

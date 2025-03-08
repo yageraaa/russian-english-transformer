@@ -17,7 +17,6 @@ if __name__ == "__main__":
     batch_size = 5
     seq_len = 10
     input_ids = torch.randint(0, vocab_size, (batch_size, seq_len))
-
     output = embeddings(input_ids)
 
     print("Input IDs shape:", input_ids.shape)

@@ -17,11 +17,8 @@ if __name__ == "__main__":
     batch_size = 5
     seq_len = 10
     x = torch.rand(batch_size, seq_len, features)
-
     sublayer = nn.Linear(features, features)
-
     res_connection = ResidualConnection(features, dropout)
-
     output = res_connection(x, sublayer)
 
     print("Input shape:", x.shape)

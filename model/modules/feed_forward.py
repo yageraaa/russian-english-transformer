@@ -19,9 +19,7 @@ if __name__ == "__main__":
     batch_size = 5
     seq_len = 10
     x = torch.rand(batch_size, seq_len, d_model)
-
     ff_layer = FeedForwardLayer(d_model, d_ff, dropout)
-
     output = ff_layer(x)
 
     print("Input shape:", x.shape)

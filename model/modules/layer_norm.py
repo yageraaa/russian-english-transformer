@@ -17,11 +17,8 @@ if __name__ == "__main__":
     features = 64
     batch_size = 10
     seq_len = 20
-
     x = torch.rand(batch_size, seq_len, features)
-
     layer_norm = LayerNormalization(features)
-
     output = layer_norm(x)
 
     print("Input shape:", x.shape)
