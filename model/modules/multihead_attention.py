@@ -3,7 +3,6 @@ import torch.nn as nn
 import math
 import torch.nn.functional as F
 
-
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model: int, h: int, dropout: float):
         super().__init__()
@@ -42,3 +41,21 @@ class MultiHeadAttention(nn.Module):
 
         x = x.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)
         return self.w_o(x)
+
+if __name__ == "__main__":
+    d_model = 512
+    h = 8
+    dropout = 0.1
+    batch_size = 5
+    seq_len = 10
+    q = torch.rand(batch_size, seq_len, d_model)
+    k = torch.rand(batch_size, seq_len, d_model)
+    v = torch.rand(batch_size, seq_len, d_model)
+
+    mha = MultiHeadAttention(d_model, h, dropout)
+
+    output = mha(q, k, v)
+
+    print("Input shape (q, k, v):", q.shape, k.shape, v.shape)
+    print("Output shape:", output.shape)
+    print("Output example (first 5 features of the first sequence):", output[0, 0, :5])
