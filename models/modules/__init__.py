@@ -4,3 +4,4 @@ from .embeddings import InputEmbeddings
 from .feed_forward import FeedForwardLayer
 from .multihead_attention import MultiHeadAttention
 from .residual_connection import ResidualConnection
+from .linear_layer import ProjectionLayer
