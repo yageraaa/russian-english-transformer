@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from models.modules.layer_norm import LayerNormalization
-from .encoder_layer import EncoderBlock
+from models.encoder.encoder_layer import EncoderBlock
 from models.modules.multihead_attention import MultiHeadAttention
 from models.modules.feed_forward import FeedForwardLayer
 
@@ -22,7 +22,7 @@ if __name__ == "__main__":
     dropout = 0.1
     self_attn = MultiHeadAttention(features, h, dropout)
     feed_forward = FeedForwardLayer(features, features * 4, dropout)
-    encoder_blocks = nn.ModuleList([EncoderBlock(features, self_attn, feed_forward, dropout) for _ in range(6)])
+    encoder_blocks = nn.ModuleList([EncoderBlock(features, h, features * 4, dropout)])
     encoder = Encoder(features, encoder_blocks)
     batch_size = 5
     seq_len = 10
