@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from models.modules.layer_norm import LayerNormalization
-from models.encoder.encoder_layer import EncoderBlock
+from models.modules.encoder_layer import EncoderBlock
 from models.modules.multihead_attention import MultiHeadAttention
 from models.modules.feed_forward import FeedForwardLayer
 
