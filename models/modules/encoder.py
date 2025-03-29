@@ -2,14 +2,12 @@ import torch
 import torch.nn as nn
 from models.modules.layer_norm import LayerNormalization
 from models.modules.encoder_layer import EncoderBlock
-from models.modules.multihead_attention import MultiHeadAttention
-from models.modules.feed_forward import FeedForwardLayer
 
 class Encoder(nn.Module):
-    def __init__(self, features: int, layers: nn.ModuleList):
+    def __init__(self,d_model: int,n_layers: int,n_heads: int,d_ff: int,dropout: float = 0.1):
         super().__init__()
-        self.layers = layers
-        self.norm = LayerNormalization(features)
+        self.layers = nn.ModuleList([EncoderBlock(d_model, n_heads, d_ff, dropout)for _ in range(n_layers)])
+        self.norm = LayerNormalization(d_model)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         for layer in self.layers:
@@ -17,19 +15,18 @@ class Encoder(nn.Module):
         return self.norm(x)
 
 if __name__ == "__main__":
-    features = 64
-    h = 8
+    d_model = 512
+    n_layers = 6
+    n_heads = 8
+    d_ff = 2048
     dropout = 0.1
-    self_attn = MultiHeadAttention(features, h, dropout)
-    feed_forward = FeedForwardLayer(features, features * 4, dropout)
-    encoder_blocks = nn.ModuleList([EncoderBlock(features, h, features * 4, dropout)])
-    encoder = Encoder(features, encoder_blocks)
+    encoder = Encoder(d_model=d_model,n_layers=n_layers,n_heads=n_heads,d_ff=d_ff,dropout=dropout)
     batch_size = 5
     seq_len = 10
-    x = torch.rand(batch_size, seq_len, features)
+    x = torch.rand(batch_size, seq_len, d_model)
     mask = torch.ones(batch_size, seq_len, seq_len)
     output = encoder(x, mask)
 
     print("Input shape:", x.shape)
     print("Output shape:", output.shape)
-    print("Output example (first 5 features of the first sequence):", output[0, 0, :5])
+    print("Output example (first 5 features):", output[0, 0, :5])
