@@ -4,7 +4,7 @@ from models.modules.layer_norm import LayerNormalization
 from models.modules.encoder_layer import EncoderBlock
 
 class Encoder(nn.Module):
-    def __init__(self,d_model: int,n_layers: int,n_heads: int,d_ff: int,dropout: float = 0.1):
+    def __init__(self,d_model: int,n_layers: int,n_heads: int,d_ff: int,dropout: float):
         super().__init__()
         self.layers = nn.ModuleList([EncoderBlock(d_model, n_heads, d_ff, dropout)for _ in range(n_layers)])
         self.norm = LayerNormalization(d_model)
