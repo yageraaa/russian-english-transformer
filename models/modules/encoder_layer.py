@@ -9,10 +9,7 @@ class EncoderBlock(nn.Module):
         super().__init__()
         self.self_attn = MultiHeadAttention(d_model, n_heads, dropout)
         self.feed_forward = FeedForwardLayer(d_model, d_ff, dropout)
-        self.residuals = nn.ModuleList([
-            ResidualConnection(d_model, dropout)
-            for _ in range(2)
-        ])
+        self.residuals = nn.ModuleList([ResidualConnection(d_model, dropout)for _ in range(2)])
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         x = self.residuals[0](x, lambda x: self.self_attn(x, x, x, mask))
