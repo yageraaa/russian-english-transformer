@@ -9,6 +9,7 @@ from models.modules.multihead_attention import MultiHeadAttention
 from models.modules.feed_forward import FeedForwardLayer
 from models.modules.encoder_layer import EncoderBlock
 from models.modules.decoder_layer import DecoderBlock
+from torchinfo import summary
 
 
 class Transformer(nn.Module):
@@ -51,7 +52,6 @@ def build_transformer(
         num_heads: int = 8,
         dropout: float = 0.1,
         d_ff: int = 2048) -> Transformer:
-
     src_embed = InputEmbeddings(d_model, src_vocab_size)
     tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
     src_pos = PositionalEncoding(d_model, src_seq_len)
@@ -121,14 +121,45 @@ if __name__ == '__main__':
     )
 
     batch_size = 2
-    src = torch.randint(0, src_vocab_size, (batch_size, src_seq_len))
-    tgt = torch.randint(0, tgt_vocab_size, (batch_size, tgt_seq_len))
-    src_mask = torch.ones(batch_size, 1, 1, src_seq_len)
-    tgt_mask = torch.tril(torch.ones(tgt_seq_len, tgt_seq_len)).unsqueeze(0).unsqueeze(0)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    transformer = transformer.to(device)
+    src = torch.randint(0, src_vocab_size, (batch_size, src_seq_len)).to(device)
+    tgt = torch.randint(0, tgt_vocab_size, (batch_size, tgt_seq_len)).to(device)
+    src_mask = torch.ones(batch_size, 1, 1, src_seq_len).to(device)
+    tgt_mask = torch.tril(torch.ones(tgt_seq_len, tgt_seq_len)).unsqueeze(0).unsqueeze(0).to(device)
+
+    print("="*80)
+    print("Input Embeddings summary:")
+    summary(transformer.src_embed, input_data=src, verbose=1)
+
+    embedded = transformer.src_embed(src)
+    print("="*80)
+    print("Positional Encoding summary:")
+    summary(transformer.src_pos, input_data=embedded, verbose=1)
+
+    encoder_input = transformer.src_pos(embedded)
+    print("="*80)
+    print("Encoder summary:")
+    summary(transformer.encoder, input_data=(encoder_input, src_mask), verbose=1)
+
+    tgt_embedded = transformer.tgt_embed(tgt)
+    tgt_encoded = transformer.tgt_pos(tgt_embedded)
+    encoder_output = transformer.encode(src, src_mask)
+    print("="*80)
+    print("Decoder summary:")
+    summary(transformer.decoder,
+            input_data=(tgt_encoded, encoder_output, src_mask, tgt_mask),
+            verbose=1)
+
+    decoder_output = transformer.decode(encoder_output, src_mask, tgt, tgt_mask)
+    print("="*80)
+    print("Projection Layer summary:")
+    summary(transformer.projection_layer, input_data=decoder_output, verbose=1)
+
     encoder_output = transformer.encode(src, src_mask)
     decoder_output = transformer.decode(encoder_output, src_mask, tgt, tgt_mask)
     logits = transformer.project(decoder_output)
 
-    print(f"Encoder output shape: {encoder_output.shape}")
+    print(f"\nEncoder output shape: {encoder_output.shape}")
     print(f"Decoder output shape: {decoder_output.shape}")
     print(f"Projection output shape: {logits.shape}")
