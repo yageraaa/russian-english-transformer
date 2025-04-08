@@ -4,9 +4,9 @@ from models.modules.layer_norm import LayerNormalization
 from models.modules.encoder_layer import EncoderBlock
 
 class Encoder(nn.Module):
-    def __init__(self,d_model: int,n_layers: int,n_heads: int,d_ff: int,dropout: float):
+    def __init__(self, d_model: int, layers: nn.ModuleList):
         super().__init__()
-        self.layers = nn.ModuleList([EncoderBlock(d_model, n_heads, d_ff, dropout)for _ in range(n_layers)])
+        self.layers = layers
         self.norm = LayerNormalization(d_model)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -16,11 +16,17 @@ class Encoder(nn.Module):
 
 if __name__ == "__main__":
     d_model = 512
-    n_layers = 6
-    n_heads = 8
+    num_layers = 6
+    num_heads = 8
     d_ff = 2048
     dropout = 0.1
-    encoder = Encoder(d_model=d_model,n_layers=n_layers,n_heads=n_heads,d_ff=d_ff,dropout=dropout)
+    encoder = Encoder(
+        d_model=d_model,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        dropout=dropout
+    )
     batch_size = 5
     seq_len = 10
     x = torch.rand(batch_size, seq_len, d_model)
