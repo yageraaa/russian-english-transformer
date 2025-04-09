@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 
 class InputEmbeddings(nn.Module):
-    def __init__(self, vocab_size, d_model):
-        super(InputEmbeddings, self).__init__()
+    def __init__(self, d_model: int, vocab_size: int):  # Исправлено
+        super().__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.d_model = d_model
 
