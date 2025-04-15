@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import math
-import torch.nn.functional as F
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model: int, num_heads: int, dropout: float):
@@ -21,6 +20,11 @@ class MultiHeadAttention(nn.Module):
         k = self.w_k(k).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
         v = self.w_v(v).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
+
+        if mask is not None:
+            if mask.dim() == 3:
+                mask = mask.unsqueeze(1)
+            scores = scores.masked_fill(mask == 0, -1e9)
         attn = torch.softmax(scores, dim=-1)
         attn = self.dropout(attn)
         x = torch.matmul(attn, v)
@@ -36,9 +40,10 @@ if __name__ == "__main__":
     q = torch.rand(batch_size, seq_len, d_model)
     k = torch.rand(batch_size, seq_len, d_model)
     v = torch.rand(batch_size, seq_len, d_model)
+    mask = torch.ones(batch_size, seq_len, seq_len)
+    mask[:, :, 5:] = 0
     mha = MultiHeadAttention(d_model, n_heads, dropout)
-    output = mha(q, k, v)
+    output = mha(q, k, v, mask)
 
     print("Input shape (q, k, v):", q.shape, k.shape, v.shape)
     print("Output shape:", output.shape)
-    print("Output example (first 5 features of the first sequence):", output[0, 0, :5])
