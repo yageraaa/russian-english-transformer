@@ -16,6 +16,10 @@ class BilingualTranslationDataset(Dataset):
         self.sos_token = torch.tensor([src_token_to_id['<start>']], dtype=torch.int64)
         self.eos_token = torch.tensor([src_token_to_id['<end>']], dtype=torch.int64)
         self.pad_token = torch.tensor([src_token_to_id['<pad>']], dtype=torch.int64)
+        self.src_token_to_id = getattr(tokenizer, f'{src_lang}_token_to_id')
+        self.src_vocab = getattr(tokenizer, f'{src_lang}_vocab')
+        self.tgt_token_to_id = getattr(tokenizer, f'{tgt_lang}_token_to_id')
+        self.tgt_vocab = getattr(tokenizer, f'{tgt_lang}_vocab')
 
     def __len__(self):
         return len(self.dataset)
@@ -26,12 +30,8 @@ class BilingualTranslationDataset(Dataset):
         tgt_text = item[self.tgt_lang]
         src_clean = self.tokenizer.clean_text(src_text, self.src_lang)
         tgt_clean = self.tokenizer.clean_text(tgt_text, self.tgt_lang)
-        src_token_to_id = getattr(self.tokenizer, f'{self.src_lang}_token_to_id')
-        src_vocab = getattr(self.tokenizer, f'{self.src_lang}_vocab')
-        tgt_token_to_id = getattr(self.tokenizer, f'{self.tgt_lang}_token_to_id')
-        tgt_vocab = getattr(self.tokenizer, f'{self.tgt_lang}_vocab')
-        src_ids = self.tokenizer.encode_text(src_clean, src_token_to_id, src_vocab)
-        tgt_ids = self.tokenizer.encode_text(tgt_clean, tgt_token_to_id, tgt_vocab)
+        src_ids = self.tokenizer.encode_text(src_clean, self.src_token_to_id, self.src_vocab)
+        tgt_ids = self.tokenizer.encode_text(tgt_clean, self.tgt_token_to_id, self.tgt_vocab)
         encoder_input = self._add_special_tokens_and_pad(src_ids, add_eos=True)
         decoder_input = self._add_special_tokens_and_pad(tgt_ids, add_eos=False)
         label = self._add_special_tokens_and_pad(tgt_ids, add_eos=True, add_sos=False)
