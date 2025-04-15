@@ -5,154 +5,100 @@ from models.modules.decoder import Decoder
 from models.modules.embeddings import InputEmbeddings
 from models.modules.positional_encoding import PositionalEncoding
 from models.modules.linear_layer import ProjectionLayer
-from models.modules.multihead_attention import MultiHeadAttention
-from models.modules.feed_forward import FeedForwardLayer
-from models.modules.encoder_layer import EncoderBlock
-from models.modules.decoder_layer import DecoderBlock
 from torchinfo import summary
 
 
 class Transformer(nn.Module):
-    def __init__(self, encoder: Encoder, decoder: Decoder,
-                 src_embed: InputEmbeddings, tgt_embed: InputEmbeddings,
-                 src_pos: PositionalEncoding, tgt_pos: PositionalEncoding,
-                 projection_layer: ProjectionLayer):
+    def __init__(self, src_vocab_size, tgt_vocab_size, src_seq_len, tgt_seq_len,
+                 d_model=512, num_layers=6, num_heads=8, dropout=0.1, d_ff=2048):
         super().__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-        self.src_embed = src_embed
-        self.tgt_embed = tgt_embed
-        self.src_pos = src_pos
-        self.tgt_pos = tgt_pos
-        self.projection_layer = projection_layer
+        self.src_embed = InputEmbeddings(d_model, src_vocab_size)
+        self.tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
+        self.src_pos = PositionalEncoding(d_model, src_seq_len)
+        self.tgt_pos = PositionalEncoding(d_model, tgt_seq_len)
 
-    def encode(self, src: torch.Tensor, src_mask: torch.Tensor):
+        self.encoder = Encoder(
+            d_model=d_model,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            d_ff=d_ff,
+            dropout=dropout
+        )
+
+        self.decoder = Decoder(
+            d_model=d_model,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            d_ff=d_ff,
+            dropout=dropout
+        )
+
+        self.projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
+
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+    def encode(self, src, src_mask):
         src = self.src_embed(src)
         src = self.src_pos(src)
         return self.encoder(src, src_mask)
 
-    def decode(self, encoder_output: torch.Tensor,
-               src_mask: torch.Tensor, tgt: torch.Tensor,
-               tgt_mask: torch.Tensor):
+    def decode(self, encoder_output, src_mask, tgt, tgt_mask):
         tgt = self.tgt_embed(tgt)
         tgt = self.tgt_pos(tgt)
         return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
 
-    def project(self, x: torch.Tensor):
+    def project(self, x):
         return self.projection_layer(x)
 
 
-def build_transformer(
-        src_vocab_size: int,
-        tgt_vocab_size: int,
-        src_seq_len: int,
-        tgt_seq_len: int,
-        d_model: int = 512,
-        num_layers: int = 6,
-        num_heads: int = 8,
-        dropout: float = 0.1,
-        d_ff: int = 2048) -> Transformer:
-    src_embed = InputEmbeddings(d_model, src_vocab_size)
-    tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
-    src_pos = PositionalEncoding(d_model, src_seq_len)
-    tgt_pos = PositionalEncoding(d_model, tgt_seq_len)
-
-    encoder_blocks = []
-    for _ in range(num_layers):
-        encoder_block = EncoderBlock(
-            d_model=d_model,
-            num_heads=num_heads,
-            d_ff=d_ff,
-            dropout=dropout
-        )
-        encoder_blocks.append(encoder_block)
-    encoder = Encoder(d_model, nn.ModuleList(encoder_blocks))
-
-    decoder_blocks = []
-    for _ in range(num_layers):
-        decoder_block = DecoderBlock(
-            d_model=d_model,
-            num_heads=num_heads,
-            d_ff=d_ff,
-            dropout=dropout
-        )
-        decoder_blocks.append(decoder_block)
-    decoder = Decoder(d_model, nn.ModuleList(decoder_blocks))
-    projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
+if __name__ == '__main__':
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     transformer = Transformer(
-        encoder=encoder,
-        decoder=decoder,
-        src_embed=src_embed,
-        tgt_embed=tgt_embed,
-        src_pos=src_pos,
-        tgt_pos=tgt_pos,
-        projection_layer=projection_layer
-    )
-
-    for p in transformer.parameters():
-        if p.dim() > 1:
-            nn.init.xavier_uniform_(p)
-
-    return transformer
-
-
-if __name__ == '__main__':
-    src_vocab_size = 256
-    tgt_vocab_size = 256
-    src_seq_len = 100
-    tgt_seq_len = 120
-    d_model = 512
-    num_layers = 6
-    num_heads = 8
-    dropout = 0.1
-    d_ff = 2048
-
-    transformer = build_transformer(
-        src_vocab_size=src_vocab_size,
-        tgt_vocab_size=tgt_vocab_size,
-        src_seq_len=src_seq_len,
-        tgt_seq_len=tgt_seq_len,
-        d_model=d_model,
-        num_layers=num_layers,
-        num_heads=num_heads,
-        dropout=dropout,
-        d_ff=d_ff
-    )
+        src_vocab_size=256,
+        tgt_vocab_size=256,
+        src_seq_len=100,
+        tgt_seq_len=120,
+        d_model=512,
+        num_layers=6,
+        num_heads=8,
+        dropout=0.1,
+        d_ff=2048
+    ).to(device)
 
     batch_size = 2
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    transformer = transformer.to(device)
-    src = torch.randint(0, src_vocab_size, (batch_size, src_seq_len)).to(device)
-    tgt = torch.randint(0, tgt_vocab_size, (batch_size, tgt_seq_len)).to(device)
-    src_mask = torch.ones(batch_size, 1, 1, src_seq_len).to(device)
-    tgt_mask = torch.tril(torch.ones(tgt_seq_len, tgt_seq_len)).unsqueeze(0).unsqueeze(0).to(device)
+    src = torch.randint(0, 256, (batch_size, 100)).to(device)
+    tgt = torch.randint(0, 256, (batch_size, 120)).to(device)
+    src_mask = torch.ones(batch_size, 1, 1, 100).to(device)
+    tgt_mask = torch.tril(torch.ones(120, 120)).unsqueeze(0).unsqueeze(0).to(device)
 
-    print("="*80)
+    print("=" * 80)
     print("Input Embeddings summary:")
     summary(transformer.src_embed, input_data=src, verbose=1)
 
     embedded = transformer.src_embed(src)
-    print("="*80)
+    print("=" * 80)
     print("Positional Encoding summary:")
     summary(transformer.src_pos, input_data=embedded, verbose=1)
 
     encoder_input = transformer.src_pos(embedded)
-    print("="*80)
+    print("=" * 80)
     print("Encoder summary:")
     summary(transformer.encoder, input_data=(encoder_input, src_mask), verbose=1)
 
     tgt_embedded = transformer.tgt_embed(tgt)
     tgt_encoded = transformer.tgt_pos(tgt_embedded)
     encoder_output = transformer.encode(src, src_mask)
-    print("="*80)
+    print("=" * 80)
     print("Decoder summary:")
     summary(transformer.decoder,
             input_data=(tgt_encoded, encoder_output, src_mask, tgt_mask),
             verbose=1)
 
     decoder_output = transformer.decode(encoder_output, src_mask, tgt, tgt_mask)
-    print("="*80)
+    print("=" * 80)
     print("Projection Layer summary:")
     summary(transformer.projection_layer, input_data=decoder_output, verbose=1)
 
