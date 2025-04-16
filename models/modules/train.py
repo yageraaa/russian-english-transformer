@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 from pathlib import Path
 from nltk.translate.bleu_score import sentence_bleu
 from models.modules.dataset import BilingualTranslationDataset, load_local_dataset
-from models.modules.transformer import build_transformer
+from models.modules.transformer import Transformer
 from tokenizer.modules.tokenizer import Tokenizer
 
 
@@ -32,7 +32,7 @@ def train_model(cfg: DictConfig):
 
     train_ds, val_ds = create_datasets(cfg, tokenizer)
 
-    model = build_transformer(
+    model = Transformer(
         src_vocab_size=len(tokenizer.ru_token_to_id),
         tgt_vocab_size=len(tokenizer.en_token_to_id),
         src_seq_len=cfg.training.seq_len,
@@ -195,7 +195,7 @@ def get_weights_file_path(cfg: DictConfig, epoch: int) -> str:
     return str(model_dir / f"{cfg.logging.model_basename}{epoch:02d}.pt")
 
 
-def latest_weights_file_path(cfg: DictConfig) -> str:
+def latest_weights_file_path(cfg: DictConfig) -> str | None:
     model_dir = Path(cfg.data.model_dir)
     if not model_dir.exists():
         return None
