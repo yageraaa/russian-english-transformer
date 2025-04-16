@@ -1,0 +1,45 @@
+defaults:
+  - _self_
+
+data:
+  base_dir: /home/gera/PycharmProjects/russian-english-transformer
+  data_dir: ${base_dir}/models/data
+  tokenizer_dir: ${base_dir}/tokenizer/vocabs
+  model_dir: ${base_dir}/checkpoints
+  log_dir: ${base_dir}/logs
+
+training:
+  batch_size: 8
+  num_epochs: 20
+  lr: 1e-4
+  dropout: 0.1
+  seq_len: 350
+
+model:
+  d_model: 512
+  num_heads: 8
+  num_layers: 4
+  d_ff: 1024
+
+language:
+  src_lang: ru
+  tgt_lang: en
+
+dataset:
+  train_ru: ${data_dir}/ru.txt
+  train_en: ${data_dir}/en.txt
+
+vocabs:
+  ru_token_to_id: ${data_dir}/ru-vocab/ru_token_to_id.json
+  en_token_to_id: ${data_dir}/en-vocab/en_token_to_id.json
+  ru_id_to_token: ${data_dir}/ru-vocab/ru_id_to_token.json
+  en_id_to_token: ${data_dir}/en-vocab/en_id_to_token.json
+
+logging:
+  model_basename: transformer_
+  preload: latest
+  experiment_name: ru-en-transformer
+  log_interval: 50
+  example_interval: 1
+  log_examples: True
+
