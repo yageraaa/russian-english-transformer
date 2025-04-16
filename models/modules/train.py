@@ -49,11 +49,15 @@ def train_model(cfg: DictConfig):
 
     epoch, global_step = load_checkpoint(cfg, model, optimizer)
 
-    for epoch in range(epoch, cfg.training.num_epochs):
-        model.train()
-        progress_bar = tqdm(train_ds, desc=f"Epoch {epoch + 1}/{cfg.training.num_epochs}")
+    epoch_progress = tqdm(range(epoch, cfg.training.num_epochs),desc="Training",position=0)
 
-        for batch in progress_bar:
+    for epoch in epoch_progress:
+        epoch_progress.set_description(f"Epoch {epoch + 1}/{cfg.training.num_epochs}")
+        model.train()
+
+        batch_progress = tqdm(train_ds,desc=f"Batches",leave=False,position=1)
+
+        for batch in batch_progress:
             inputs = {k: v.to(device) for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
             encoder_output = model.encode(inputs['encoder_input'], inputs['encoder_mask'])
             decoder_output = model.decode(encoder_output, inputs['encoder_mask'], inputs['decoder_input'],
@@ -77,7 +81,7 @@ def train_model(cfg: DictConfig):
 
             wandb.log(log_data)
             global_step += 1
-            progress_bar.set_postfix(loss=f"{loss.item():.3f}")
+            batch_progress.set_postfix(loss=f"{loss.item():.3f}")
 
         val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg)
         wandb.log({"val/loss": val_loss, "epoch": epoch, **val_metrics})
