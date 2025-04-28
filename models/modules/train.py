@@ -74,14 +74,13 @@ def train_model(cfg: DictConfig):
                 "step": global_step
             }
 
-            if getattr(cfg.logging, 'log_examples', True) and global_step % 500 == 0:
-                log_data.update(log_translations(model, tokenizer, device, cfg))
-
             wandb.log(log_data)
             global_step += 1
 
         val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg)
         wandb.log({"val/loss": val_loss, "epoch": epoch, **val_metrics})
+        if getattr(cfg.logging, 'log_examples', True):
+            wandb.log(log_translations(model, tokenizer, device, cfg, epoch))
         save_checkpoint(cfg, epoch, global_step, model, optimizer)
 
     wandb.finish()
@@ -166,7 +165,7 @@ def calculate_bleu(prediction: str, reference: str) -> float:
     return sentence_bleu(ref_tokens, pred_tokens)
 
 
-def log_translations(model, tokenizer, device, cfg: DictConfig):
+def log_translations(model, tokenizer, device, cfg: DictConfig, epoch: int):
     examples = [
         ("Привет, как дела?", "Hello, how are you?"),
         ("Сегодня хорошая погода", "The weather is nice today")
@@ -187,7 +186,7 @@ def log_translations(model, tokenizer, device, cfg: DictConfig):
             translation = tokenizer.decode_ids(output[0].cpu().numpy(), getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"))
             translations.append([src, ref, translation])
 
-    return {"examples": wandb.Table(columns=["Source", "Reference", "Translation"], data=translations)}
+    return {f"examples_epoch_{epoch}": wandb.Table(columns=["Source", "Reference", "Translation"], data=translations)}
 
 
 def get_weights_file_path(cfg: DictConfig, epoch: int) -> str:
