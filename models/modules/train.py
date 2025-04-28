@@ -13,7 +13,7 @@ from models.modules.transformer import Transformer
 from tokenizer.modules.tokenizer import Tokenizer
 
 
-@hydra.main(config_path="../configs", config_name="config")
+@hydra.main(config_path="../configs", config_name="config", version_base="1.2")
 def train_model(cfg: DictConfig):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
