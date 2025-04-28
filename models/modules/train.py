@@ -144,7 +144,7 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg):
             decoder_output = model.decode(encoder_output, inputs['encoder_mask'], inputs['decoder_input'],
                                           inputs['decoder_mask'])
             proj_output = model.project(decoder_output)
-            total_loss += loss_fn(proj_output.view(-1, inputs['label'].size(-1)), inputs['label'].view(-1)).item()
+            total_loss += loss_fn(proj_output.view(-1, len(tokenizer.en_token_to_id)), inputs['label'].view(-1)).item()
             translations = model.translate(inputs['encoder_input'])
             for i in range(len(batch['src_text'])):
                 pred = tokenizer.decode_ids(translations[i].cpu().numpy(), getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"))
