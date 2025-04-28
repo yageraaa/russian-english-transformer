@@ -7,7 +7,7 @@ from time import time
 import hydra
 from omegaconf import DictConfig
 from pathlib import Path
-from nltk.translate.bleu_score import sentence_bleu
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from models.modules.dataset import BilingualTranslationDataset, load_local_dataset
 from models.modules.transformer import Transformer
 from tokenizer.modules.tokenizer import Tokenizer
@@ -88,7 +88,7 @@ def train_model(cfg: DictConfig):
 
 def create_datasets(cfg: DictConfig, tokenizer):
     train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)[:50000]
-    #train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en) if u want to use the entire dataset
+    # train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en) if u want to use the entire dataset
     train, val = random_split(train_data, [int(0.9 * len(train_data)), len(train_data) - int(0.9 * len(train_data))])
 
     return (
@@ -163,7 +163,7 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg):
 def calculate_bleu(prediction: str, reference: str) -> float:
     pred_tokens = prediction.split()
     ref_tokens = [reference.split()]
-    return sentence_bleu(ref_tokens, pred_tokens)
+    return sentence_bleu(ref_tokens, pred_tokens, smoothing_function=SmoothingFunction().method1)
 
 
 def log_translations(model, tokenizer, device, cfg: DictConfig, epoch: int):
@@ -185,6 +185,7 @@ def log_translations(model, tokenizer, device, cfg: DictConfig, epoch: int):
             encoder_input = torch.tensor([input_tokens], dtype=torch.int64).to(device)
             output = model.translate(encoder_input)
             translation = tokenizer.decode_ids(output[0].cpu().numpy(), getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"))
+            print(f"Epoch {epoch} - Source: {src}, Reference: {ref}, Translation: {translation}")
             translations.append([src, ref, translation])
 
     return {f"examples_epoch_{epoch}": wandb.Table(columns=["Source", "Reference", "Translation"], data=translations)}
