@@ -87,7 +87,8 @@ def train_model(cfg: DictConfig):
 
 
 def create_datasets(cfg: DictConfig, tokenizer):
-    train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)
+    train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)[:50000]
+    #train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en) if u want to use the entire dataset
     train, val = random_split(train_data, [int(0.9 * len(train_data)), len(train_data) - int(0.9 * len(train_data))])
 
     return (
