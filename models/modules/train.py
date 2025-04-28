@@ -87,7 +87,7 @@ def train_model(cfg: DictConfig):
 
 
 def create_datasets(cfg: DictConfig, tokenizer):
-    train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)[:50000]
+    train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)[:5000]
     # train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en) if u want to use the entire dataset
     train, val = random_split(train_data, [int(0.9 * len(train_data)), len(train_data) - int(0.9 * len(train_data))])
 
@@ -183,7 +183,7 @@ def log_translations(model, tokenizer, device, cfg: DictConfig, epoch: int):
                 getattr(tokenizer, f"{cfg.language.src_lang}_vocab")
             )
             encoder_input = torch.tensor([input_tokens], dtype=torch.int64).to(device)
-            output = model.translate(encoder_input)
+            output = model.translate(encoder_input, start_token_id=tokenizer.en_token_to_id['<start>'], end_token_id=tokenizer.en_token_to_id['<end>'])
             translation = tokenizer.decode_ids(output[0].cpu().numpy(), getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"))
             print(f"Epoch {epoch} - Source: {src}, Reference: {ref}, Translation: {translation}")
             translations.append([src, ref, translation])
