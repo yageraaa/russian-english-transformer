@@ -58,20 +58,20 @@ class Transformer(nn.Module):
         src_mask = torch.ones(batch_size, 1, 1, src.size(1)).to(device)
         encoder_output = self.encode(src, src_mask)
         tgt = torch.full((batch_size, 1), start_token_id, dtype=torch.long, device=device)
-        output_tokens = []
+        output_tokens = [start_token_id]
 
         for _ in range(max_len):
             tgt_mask = torch.tril(torch.ones(tgt.size(1), tgt.size(1))).unsqueeze(0).unsqueeze(0).to(device)
             decoder_output = self.decode(encoder_output, src_mask, tgt, tgt_mask)
             logits = self.project(decoder_output[:, -1, :])
             next_token = torch.argmax(logits, dim=-1).unsqueeze(1)
-            output_tokens.append(next_token)
+            output_tokens.append(next_token.item())
             tgt = torch.cat([tgt, next_token], dim=1)
 
-            if torch.all(next_token == end_token_id):
+            if next_token.item() == end_token_id:
                 break
 
-        return tgt
+        return tgt[:, 1:]
 
 
 if __name__ == '__main__':
