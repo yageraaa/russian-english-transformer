@@ -9,9 +9,9 @@ data:
   log_dir: ${data.base_dir}/logs
 
 training:
-  batch_size: 8
-  num_epochs: 20
-  lr: 1e-4
+  batch_size: 24
+  num_epochs: 40
+  lr: 0.0005
   dropout: 0.1
   seq_len: 350
 
@@ -26,8 +26,8 @@ language:
   tgt_lang: en
 
 dataset:
-  train_ru: ${data.data_dir}/ru.txt
-  train_en: ${data.data_dir}/en.txt
+  train_ru: ${data.data_dir}/pararu_clean.txt
+  train_en: ${data.data_dir}/paraen_clean.txt
 
 vocabs:
   ru_token_to_id: ${data.tokenizer_dir}/ru-vocab/ru_token_to_id.json
