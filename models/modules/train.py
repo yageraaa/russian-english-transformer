@@ -87,7 +87,7 @@ def train_model(cfg: DictConfig):
 
 
 def create_datasets(cfg: DictConfig, tokenizer):
-    train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)[:5000]
+    train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)[:50000]
     # train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en) if u want to use the entire dataset
     train, val = random_split(train_data, [int(0.9 * len(train_data)), len(train_data) - int(0.9 * len(train_data))])
 
@@ -146,7 +146,7 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg):
                                           inputs['decoder_mask'])
             proj_output = model.project(decoder_output)
             total_loss += loss_fn(proj_output.view(-1, len(tokenizer.en_token_to_id)), inputs['label'].view(-1)).item()
-            translations = model.translate(inputs['encoder_input'])
+            translations = model.translate(inputs['encoder_input'], start_token_id=tokenizer.en_token_to_id['<start>'], end_token_id=tokenizer.en_token_to_id['<end>'])
             for i in range(len(batch['src_text'])):
                 pred = tokenizer.decode_ids(translations[i].cpu().numpy(), getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"))
                 ref = batch['tgt_text'][i]
