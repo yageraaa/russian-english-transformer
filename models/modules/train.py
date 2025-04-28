@@ -148,7 +148,7 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg):
             total_loss += loss_fn(proj_output.view(-1, inputs['label'].size(-1)), inputs['label'].view(-1)).item()
             translations = model.translate(inputs['encoder_input'])
             for i in range(len(batch['src_text'])):
-                pred = tokenizer.decode_ids(translations[i].cpu().numpy(), cfg.language.tgt_lang)
+                pred = tokenizer.decode_ids(translations[i].cpu().numpy(), getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"))
                 ref = batch['tgt_text'][i]
                 total_bleu += calculate_bleu(pred, ref)
                 total_exact_match += int(pred == ref)
@@ -184,7 +184,7 @@ def log_translations(model, tokenizer, device, cfg: DictConfig):
             )
             encoder_input = torch.tensor([input_tokens], dtype=torch.int64).to(device)
             output = model.translate(encoder_input)
-            translation = tokenizer.decode_ids(output[0].cpu().numpy(), cfg.language.tgt_lang)
+            translation = tokenizer.decode_ids(output[0].cpu().numpy(), getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"))
             translations.append([src, ref, translation])
 
     return {"examples": wandb.Table(columns=["Source", "Reference", "Translation"], data=translations)}
