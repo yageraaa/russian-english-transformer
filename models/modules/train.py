@@ -166,7 +166,8 @@ def calculate_bleu(prediction: str, reference: str) -> float:
 def log_translations(model, tokenizer, device, cfg: DictConfig, epoch: int):
     examples = [
         ("Привет, как дела?", "Hello, how are you?"),
-        ("Сегодня хорошая погода", "The weather is nice today")
+        ("Сегодня хорошая погода", "The weather is nice today"),
+        ("Собака гуляет в парке", "Dog is walking in the park")
     ]
 
     model.eval()
