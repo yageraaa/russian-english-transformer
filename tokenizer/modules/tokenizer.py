@@ -80,13 +80,13 @@ class Tokenizer:
     def decode_ids(self, token_ids, id_to_token):
         tokens = [id_to_token.get(token_id, '<unk>') for token_id in token_ids]
         words = []
-        word = ''
         for token in tokens:
-            if token == '_ed':
-                words.append(word)
-                word = ''
-            elif token not in ['<start>', '<end>', '<pad>']:
-                word += token
-        if word:
-            words.append(word)
-        return ' '.join(words).capitalize()
+            if token in ['<start>', '<end>', '<pad>']:
+                continue
+            if token in [',', '.', '!', '?', '...', '-', "'"] or token == '_ed':
+                if words and words[-1]:
+                    words.append(token)
+                continue
+            words.append(token)
+        result = ' '.join(word for word in words if word).capitalize()
+        return result
