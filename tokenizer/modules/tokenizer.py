@@ -16,9 +16,9 @@ class Tokenizer:
 
     def clean_text(self, text, lang):
         if lang == 'ru':
-            pattern = r"[^а-яё\s]"
+            pattern = r"[^а-яё\s,.!?0-9'-]"
         else:
-            pattern = r"[^a-z\s]"
+            pattern = r"[^a-z\s,.!?0-9'-]"
 
         text = re.sub(pattern, "", text.lower())
         return ' '.join(text.split())
@@ -90,8 +90,3 @@ class Tokenizer:
         if word:
             words.append(word)
         return ' '.join(words)
-
-
-
-
-
