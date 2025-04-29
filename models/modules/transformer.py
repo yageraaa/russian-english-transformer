@@ -63,7 +63,8 @@ class Transformer(nn.Module):
             tgt_mask = torch.tril(torch.ones(tgt.size(1), tgt.size(1))).unsqueeze(0).unsqueeze(0).to(device)
             decoder_output = self.decode(encoder_output, src_mask, tgt, tgt_mask)
             logits = self.project(decoder_output[:, -1, :])
-            next_token = torch.argmax(logits, dim=-1).unsqueeze(1)
+            probs = torch.softmax(logits / 0.7, dim=-1)
+            next_token = torch.argmax(probs, dim=-1).unsqueeze(1)
             tgt = torch.cat([tgt, next_token], dim=1)
 
             if torch.all(next_token == end_token_id):
