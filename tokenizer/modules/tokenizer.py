@@ -89,4 +89,4 @@ class Tokenizer:
                 word += token
         if word:
             words.append(word)
-        return ' '.join(words)
+        return ' '.join(words).capitalize()
