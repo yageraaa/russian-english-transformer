@@ -87,8 +87,8 @@ def train_model(cfg: DictConfig):
 
 
 def create_datasets(cfg: DictConfig, tokenizer):
-    train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)[:50000]
-    # train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en) if u want to use the entire dataset
+    train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)[:200000]
+    #train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en) #if u want to use the entire dataset
     train, val = random_split(train_data, [int(0.9 * len(train_data)), len(train_data) - int(0.9 * len(train_data))])
 
     return (
@@ -136,7 +136,6 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg):
     model.eval()
     total_loss = 0
     total_bleu = 0
-    total_exact_match = 0
 
     with torch.no_grad():
         for batch in tqdm(val_loader, desc="Validating"):
@@ -151,11 +150,9 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg):
                 pred = tokenizer.decode_ids(translations[i].cpu().numpy(), getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"))
                 ref = batch['tgt_text'][i]
                 total_bleu += calculate_bleu(pred, ref)
-                total_exact_match += int(pred == ref)
 
     metrics = {
-        "val/bleu": total_bleu / len(val_loader.dataset),
-        "val/exact_match": total_exact_match / len(val_loader.dataset)
+        "val/bleu": total_bleu / len(val_loader.dataset)
     }
     return total_loss / len(val_loader), metrics
 
