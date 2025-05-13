@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model: int, num_heads: int, dropout: float):
+    def __init__(self, d_model, num_heads, dropout=0.1):
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
@@ -24,12 +24,14 @@ class MultiHeadAttention(nn.Module):
         if mask is not None:
             if mask.dim() == 3:
                 mask = mask.unsqueeze(1)
-            scores = scores.masked_fill(mask == 0, -1e9)
+            scores = scores.masked_fill(mask == 0, float('-inf'))
+
         attn = torch.softmax(scores, dim=-1)
         attn = self.dropout(attn)
-        x = torch.matmul(attn, v)
-        x = x.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)
-        return self.w_o(x)
+        output = torch.matmul(attn, v)
+        output = output.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)
+        return self.w_o(output)
+
 
 if __name__ == "__main__":
     d_model = 512
