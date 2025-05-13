@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
+from torchinfo import summary
 from models.modules.encoder import Encoder
 from models.modules.decoder import Decoder
 from models.modules.embeddings import InputEmbeddings
 from models.modules.positional_encoding import PositionalEncoding
 from models.modules.linear_layer import ProjectionLayer
-from torchinfo import summary
 
 
 class Transformer(nn.Module):
@@ -16,63 +16,51 @@ class Transformer(nn.Module):
         self.tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
         self.src_pos = PositionalEncoding(d_model, src_seq_len)
         self.tgt_pos = PositionalEncoding(d_model, tgt_seq_len)
-
-        self.encoder = Encoder(
-            d_model=d_model,
-            num_layers=num_layers,
-            num_heads=num_heads,
-            d_ff=d_ff,
-            dropout=dropout
-        )
-
-        self.decoder = Decoder(
-            d_model=d_model,
-            num_layers=num_layers,
-            num_heads=num_heads,
-            d_ff=d_ff,
-            dropout=dropout
-        )
-
+        self.encoder = Encoder(d_model, num_layers, num_heads, d_ff, dropout)
+        self.decoder = Decoder(d_model, num_layers, num_heads, d_ff, dropout)
         self.projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
+        self._init_weights()
 
+    def _init_weights(self):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
     def encode(self, src, src_mask):
-        src = self.src_embed(src)
-        src = self.src_pos(src)
+        src = self.src_pos(self.src_embed(src))
         return self.encoder(src, src_mask)
 
     def decode(self, encoder_output, src_mask, tgt, tgt_mask):
-        tgt = self.tgt_embed(tgt)
-        tgt = self.tgt_pos(tgt)
+        tgt = self.tgt_pos(self.tgt_embed(tgt))
         return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
 
     def project(self, x):
         return self.projection_layer(x)
 
-    def translate(self, src, max_len=100, start_token_id=0, end_token_id=1):
-        batch_size = src.size(0)
-        device = src.device
-        src_mask = torch.ones(batch_size, 1, 1, src.size(1)).to(device)
+    def generate_square_subsequent_mask(self, size, device):
+        mask = torch.tril(torch.ones(size, size, device=device))
+        return mask.unsqueeze(0).unsqueeze(0)
+
+    def translate_batch(self, src, max_len=100, start_token_id=0, end_token_id=1):
+        batch_size, device = src.size(0), src.device
+        src_mask = torch.ones(batch_size, 1, 1, src.size(1), device=device).bool()
         encoder_output = self.encode(src, src_mask)
         tgt = torch.full((batch_size, 1), start_token_id, dtype=torch.long, device=device)
+        finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
 
         for _ in range(max_len):
-            tgt_mask = torch.tril(torch.ones(tgt.size(1), tgt.size(1))).unsqueeze(0).unsqueeze(0).to(device)
+            tgt_mask = self.generate_square_subsequent_mask(tgt.size(1), device=device)
+
             decoder_output = self.decode(encoder_output, src_mask, tgt, tgt_mask)
             logits = self.project(decoder_output[:, -1, :])
-            probs = torch.softmax(logits / 0.7, dim=-1)
-            top_k_probs, top_k_indices = torch.topk(probs, k=10, dim=-1)
-            next_token = top_k_indices.gather(-1, torch.multinomial(top_k_probs, 1))
+            next_token = torch.argmax(logits, dim=-1, keepdim=True)
             tgt = torch.cat([tgt, next_token], dim=1)
 
-            if torch.all(next_token == end_token_id):
+            finished |= (next_token.squeeze(1) == end_token_id)
+            if finished.all():
                 break
 
         return tgt[:, 1:]
-
 
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
