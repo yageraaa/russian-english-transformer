@@ -53,25 +53,20 @@ class BilingualTranslationDataset(Dataset):
         tokens = []
         if add_sos:
             tokens.append(self.sos_token)
-
         tokens.append(torch.tensor(token_ids, dtype=torch.int64))
-
         if add_eos:
             tokens.append(self.eos_token)
-
         tensor = torch.cat(tokens, dim=0)
         padding = self.seq_length - tensor.size(0)
-
         if padding > 0:
             tensor = torch.cat([tensor, torch.full((padding,), self.pad_token.item(), dtype=torch.int64)])
         elif padding < 0:
             tensor = tensor[:self.seq_length]
-
         return tensor
 
     @staticmethod
     def causal_mask(size):
-        return torch.triu(torch.ones(1, size, size), diagonal=1).type(torch.int) == 0
+        return torch.tril(torch.ones(size, size)).bool()
 
 
 def load_local_dataset(ru_path, en_path):
