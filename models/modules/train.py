@@ -11,7 +11,7 @@ from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from models.modules.dataset import BilingualTranslationDataset, load_local_dataset
 from models.modules.transformer import Transformer
 from tokenizer.modules.tokenizer import Tokenizer
-
+from typing import Optional
 
 @hydra.main(config_path="../configs", config_name="config", version_base="1.2")
 def train_model(cfg: DictConfig):
@@ -45,7 +45,10 @@ def train_model(cfg: DictConfig):
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
-    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.ru_token_to_id['<pad>'], label_smoothing=0.1)
+    loss_fn = nn.CrossEntropyLoss(
+        ignore_index=tokenizer.en_token_to_id['<pad>'],
+        label_smoothing=0.1
+    )
 
     epoch, global_step = load_checkpoint(cfg, model, optimizer)
 
@@ -87,9 +90,12 @@ def train_model(cfg: DictConfig):
 
 
 def create_datasets(cfg: DictConfig, tokenizer):
-    train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)[:200000]
-    #train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en) #if u want to use the entire dataset
-    train, val = random_split(train_data, [int(0.9 * len(train_data)), len(train_data) - int(0.9 * len(train_data))])
+    train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)
+    # train_data = load_local_dataset(cfg.dataset.train_ru, cfg.dataset.train_en)[:10000]
+    # train, val = random_split(train_data, [int(0.9 * len(train_data)), len(train_data) - int(0.9 * len(train_data))])
+    val_size = 10000
+    train_size = len(train_data) - val_size
+    train, val = random_split(train_data, [train_size, val_size])
 
     return (
         DataLoader(
@@ -122,37 +128,56 @@ def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer):
         "optimizer_state_dict": optimizer.state_dict()
     }, model_file)
 
-    artifact = wandb.Artifact(f"model-epoch-{epoch}", type="model", metadata={
-        "experiment": cfg.logging.experiment_name,
-        "epoch": epoch,
-        "config": hydra.utils.instantiate(cfg)
-    }
-                              )
-    artifact.add_file(str(model_file))
-    wandb.log_artifact(artifact)
-
+def decode_until_end(ids, id_to_token, end_token="<end>"):
+    tokens = []
+    for idx in ids:
+        token = id_to_token.get(idx, '<unk>')
+        if token == end_token:
+            break
+        tokens.append(token)
+    return " ".join(tokens)
 
 def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg):
     model.eval()
     total_loss = 0
     total_bleu = 0
+    total_samples = 0
 
     with torch.no_grad():
         for batch in tqdm(val_loader, desc="Validating"):
             inputs = {k: v.to(device) for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
             encoder_output = model.encode(inputs['encoder_input'], inputs['encoder_mask'])
-            decoder_output = model.decode(encoder_output, inputs['encoder_mask'], inputs['decoder_input'],
-                                          inputs['decoder_mask'])
+            decoder_output = model.decode(
+                encoder_output,
+                inputs['encoder_mask'],
+                inputs['decoder_input'],
+                inputs['decoder_mask']
+            )
             proj_output = model.project(decoder_output)
-            total_loss += loss_fn(proj_output.view(-1, len(tokenizer.en_token_to_id)), inputs['label'].view(-1)).item()
-            translations = model.translate(inputs['encoder_input'], start_token_id=tokenizer.en_token_to_id['<start>'], end_token_id=tokenizer.en_token_to_id['<end>'])
-            for i in range(len(batch['src_text'])):
-                pred = tokenizer.decode_ids(translations[i].cpu().numpy(), getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"))
+
+            total_loss += loss_fn(
+                proj_output.view(-1, len(tokenizer.en_token_to_id)),
+                inputs['label'].view(-1)
+            ).item()
+
+            translated = model.translate_batch(
+                inputs['encoder_input'],
+                start_token_id=tokenizer.en_token_to_id['<start>'],
+                end_token_id=tokenizer.en_token_to_id['<end>']
+            )
+
+            for i in range(translated.size(0)):
+                pred = decode_until_end(
+                    translated[i].cpu().numpy(),
+                    getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"),
+                    end_token="<end>"
+                )
                 ref = batch['tgt_text'][i]
                 total_bleu += calculate_bleu(pred, ref)
+                total_samples += 1
 
     metrics = {
-        "val/bleu": total_bleu / len(val_loader.dataset)
+        "val/bleu": total_bleu / total_samples
     }
     return total_loss / len(val_loader), metrics
 
@@ -181,7 +206,11 @@ def log_translations(model, tokenizer, device, cfg: DictConfig, epoch: int):
                 getattr(tokenizer, f"{cfg.language.src_lang}_vocab")
             )
             encoder_input = torch.tensor([input_tokens], dtype=torch.int64).to(device)
-            output = model.translate(encoder_input, start_token_id=tokenizer.en_token_to_id['<start>'], end_token_id=tokenizer.en_token_to_id['<end>'])
+            output = model.translate_batch(
+                encoder_input,
+                start_token_id=tokenizer.en_token_to_id['<start>'],
+                end_token_id=tokenizer.en_token_to_id['<end>']
+            )
             translation = tokenizer.decode_ids(output[0].cpu().numpy(), getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"))
             print(f"Epoch {epoch} - Source: {src}, Reference: {ref}, Translation: {translation}")
             translations.append([src, ref, translation])
@@ -195,7 +224,7 @@ def get_weights_file_path(cfg: DictConfig, epoch: int) -> str:
     return str(model_dir / f"{cfg.logging.model_basename}{epoch:02d}.pt")
 
 
-def latest_weights_file_path(cfg: DictConfig) -> str | None:
+def latest_weights_file_path(cfg: DictConfig) -> Optional[str]:
     model_dir = Path(cfg.data.model_dir)
     if not model_dir.exists():
         return None
