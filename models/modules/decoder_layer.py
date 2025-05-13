@@ -13,7 +13,7 @@ class DecoderBlock(nn.Module):
         self.residuals = nn.ModuleList([ResidualConnection(d_model, dropout) for _ in range(3)])
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor,
-               src_mask: torch.Tensor, tgt_mask: torch.Tensor):
+                src_mask: torch.Tensor, tgt_mask: torch.Tensor):
         x = self.residuals[0](x, lambda x: self.self_attention(x, x, x, tgt_mask))
         x = self.residuals[1](x, lambda x: self.cross_attention(x, encoder_output, encoder_output, src_mask))
         x = self.residuals[2](x, self.feed_forward)
