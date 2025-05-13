@@ -9,25 +9,25 @@ data:
   log_dir: ${data.base_dir}/logs
 
 training:
-  batch_size: 24
+  batch_size: 16
   num_epochs: 30
-  lr: 0.001
+  lr: 0.0001
   dropout: 0.1
-  seq_len: 350
+  seq_len: 128
 
 model:
   d_model: 512
   num_heads: 8
-  num_layers: 4
-  d_ff: 1024
+  num_layers: 6
+  d_ff: 2048
 
 language:
   src_lang: ru
   tgt_lang: en
 
 dataset:
-  train_ru: ${data.data_dir}/pararu_clean.txt
-  train_en: ${data.data_dir}/paraen_clean.txt
+  train_ru: ${data.data_dir}/Tatoeba.en-ru.ru
+  train_en: ${data.data_dir}/Tatoeba.en-ru.en
 
 vocabs:
   ru_token_to_id: ${data.tokenizer_dir}/ru-vocab/ru_token_to_id.json
