@@ -230,7 +230,7 @@ def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, accelerator)
             "global_step": step,
             "model_state_dict": accelerator.unwrap_model(model).state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
-            "accelerator_state": accelerator.get_state_dict()
+            "accelerator_state": accelerator.get_state_dict(model)
         }, model_file)
 
         accelerator.print(f"Checkpoint saved successfully")
