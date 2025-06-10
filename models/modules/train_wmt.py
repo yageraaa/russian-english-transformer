@@ -154,7 +154,7 @@ def train_model(cfg: DictConfig):
 
 def load_pretrained_decoder_weights(model, weights_path, accelerator):
     try:
-        checkpoint = torch.load(weights_path, map_location='cpu')
+        checkpoint = torch.load(weights_path, map_location='cpu', weights_only=True)
 
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
             state_dict = checkpoint["model_state_dict"]
