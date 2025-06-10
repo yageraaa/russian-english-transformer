@@ -59,15 +59,16 @@ class SelfAttentionDecoderBlock(nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ff: int, dropout: float):
         super().__init__()
         self.self_attention = QKNorm(d_model, num_heads, dropout)
+        self.cross_attention = QKNorm(d_model, num_heads, dropout)
         self.feed_forward = SwiGLU(d_model, d_ff, dropout)
         self.residuals = nn.ModuleList([
-            ResidualConnectionWithRMSNorm(d_model, dropout),
-            ResidualConnectionWithRMSNorm(d_model, dropout)
+            ResidualConnectionWithRMSNorm(d_model, dropout) for _ in range(3)
         ])
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor):
         x = self.residuals[0](x, lambda x: self.self_attention(x, x, x, mask))
-        x = self.residuals[1](x, self.feed_forward)
+        x = self.residuals[1](x, lambda x: torch.zeros_like(x))
+        x = self.residuals[2](x, self.feed_forward)
         return x
 
 
@@ -92,4 +93,7 @@ if __name__ == "__main__":
 
     print(f"Input Shape: {x.shape}")
     print(f"Output Shape: {output.shape}")
+
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Total parameters: {total_params:,}")
 
