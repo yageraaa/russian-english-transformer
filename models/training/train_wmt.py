@@ -9,10 +9,10 @@ from omegaconf import DictConfig
 from pathlib import Path
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from accelerate import Accelerator
-from models.modules.dataset_wmt import BilingualTranslationDataset, load_hf_dataset
-from models.modules.transformer_wmt import TransformerWithNewTechniques
-from tokenizer.modules.tokenizer import Tokenizer
-from typing import Optional, Dict, Any, List, Tuple
+from models.data.dataset_wmt import BilingualTranslationDataset, load_hf_dataset
+from models.transformer.transformer_wmt import TransformerWithNewTechniques
+from tokenizer.tokenizer import Tokenizer
+from typing import Optional
 import signal
 import gc
 
@@ -24,7 +24,9 @@ def train_model(cfg: DictConfig):
 
     wandb.init(
         project="transformer-ru-en",
-        name=f"{cfg.logging.experiment_name}-{int(time())}",
+        id=cfg.logging.run_id,
+        resume=cfg.logging.resume,
+        # name=f"{cfg.logging.experiment_name}-{int(time())}",
         config=hydra.utils.instantiate(cfg)
     )
 
