@@ -6,7 +6,7 @@ data:
   data_dir: ${data.base_dir}/models/data
   tokenizer_dir: ${data.base_dir}/tokenizer/vocabs
   model_dir: ${data.base_dir}/checkpoints
-  decoder_weights: ${data.base_dir}/decoder_checkpoints/decoder_pretrain_19.pt
+  decoder_weights: ${data.base_dir}/decoder_checkpoints/decoder_pretrain_17.pt
   log_dir: ${data.base_dir}/logs
 
 training:
@@ -47,6 +47,8 @@ logging:
   log_interval: 50
   example_interval: 1
   log_examples: True
+  run_id: "5lo4muld"
+  resume: "must"
 
 hydra:
   run:
