@@ -8,9 +8,9 @@ import hydra
 from omegaconf import DictConfig
 from pathlib import Path
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
-from models.modules.dataset import BilingualTranslationDataset, load_local_dataset
-from models.modules.transformer import Transformer
-from tokenizer.modules.tokenizer import Tokenizer
+from models.data.dataset import BilingualTranslationDataset, load_local_dataset
+from models.transformer.transformer import Transformer
+from tokenizer.tokenizer import Tokenizer
 from typing import Optional
 
 @hydra.main(config_path="../configs", config_name="config", version_base="1.2")

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from models.modules.rms_norm import RMSNorm
+from models.core.rms_norm import RMSNorm
 
 class ResidualConnectionWithRMSNorm(nn.Module):
     def __init__(self, features: int, dropout: float):

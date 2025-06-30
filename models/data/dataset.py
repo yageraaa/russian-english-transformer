@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import Dataset
-from tokenizer.modules.tokenizer import Tokenizer
+from tokenizer.tokenizer import Tokenizer
 from pathlib import Path
 
 
@@ -78,7 +78,7 @@ def load_local_dataset(ru_path, en_path):
 
 
 if __name__ == "__main__":
-    BASE_DIR = Path('/home/gera/PycharmProjects/russian-english-transformer')
+    BASE_DIR = Path('/')
     ru_path = BASE_DIR / 'models/data/ru.txt'
     en_path = BASE_DIR / 'models/data/en.txt'
 

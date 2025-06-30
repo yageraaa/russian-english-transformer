@@ -1,8 +1,7 @@
 import torch
 from torch.utils.data import Dataset
 from datasets import load_dataset
-from tokenizer.modules.tokenizer import Tokenizer
-from pathlib import Path
+from tokenizer.tokenizer import Tokenizer
 from tqdm import tqdm
 from omegaconf import OmegaConf
 

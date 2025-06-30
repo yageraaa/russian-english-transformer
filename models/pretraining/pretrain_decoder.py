@@ -7,9 +7,9 @@ from time import time
 import hydra
 from omegaconf import DictConfig
 from pathlib import Path
-from pretrain_decoder_dataset import EnglishLanguageModelDataset, load_english_dataset
+from models.data.pretrain_decoder_dataset import EnglishLanguageModelDataset, load_english_dataset
 from pretrain_decoder_model import DecoderOnlyModel
-from tokenizer.modules.tokenizer import Tokenizer
+from tokenizer.tokenizer import Tokenizer
 
 
 @hydra.main(config_path="../configs", config_name="config", version_base="1.2")

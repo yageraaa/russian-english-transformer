@@ -1,14 +1,11 @@
 import torch
 import torch.nn as nn
 from torchinfo import summary
-from models.modules.embeddings import InputEmbeddings
-from models.modules.positional_encoding import PositionalEncoding
-from models.modules.linear_layer import ProjectionLayer
-from models.modules.rms_norm import RMSNorm
-from models.modules.swiglu import SwiGLU
-from models.modules.qk_norm import QKNorm
-from models.modules.decoder_v2 import DecoderWithNewTechniques
-from models.modules.encoder_v2 import EncoderWithNewTechniques
+from models.core.embeddings import InputEmbeddings
+from models.core.positional_encoding import PositionalEncoding
+from models.core.linear_layer import ProjectionLayer
+from models.transformer.decoder_v2 import DecoderWithNewTechniques
+from models.transformer.encoder_v2 import EncoderWithNewTechniques
 
 
 class TransformerWithNewTechniques(nn.Module):
@@ -30,10 +27,18 @@ class TransformerWithNewTechniques(nn.Module):
                 nn.init.xavier_uniform_(p)
 
     def encode(self, src, src_mask):
+        if src_mask is not None and src_mask.dim() == 3:
+            src_mask = src_mask.unsqueeze(1)
+
         src = self.src_pos(self.src_embed(src))
         return self.encoder(src, src_mask)
 
     def decode(self, encoder_output, src_mask, tgt, tgt_mask):
+        if src_mask is not None and src_mask.dim() == 3:
+            src_mask = src_mask.unsqueeze(1)
+        if tgt_mask is not None and tgt_mask.dim() == 3:
+            tgt_mask = tgt_mask.unsqueeze(1)
+
         tgt = self.tgt_pos(self.tgt_embed(tgt))
         return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
 
@@ -65,8 +70,10 @@ class TransformerWithNewTechniques(nn.Module):
 
         return tgt[:, 1:]
 
+
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
     transformer = TransformerWithNewTechniques(
         src_vocab_size=256,

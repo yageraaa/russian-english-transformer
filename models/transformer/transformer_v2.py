@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 from torchinfo import summary
-from models.modules.encoder import Encoder
-from models.modules.decoder import Decoder
-from models.modules.embeddings import InputEmbeddings
-from models.modules.positional_encoding import PositionalEncoding
-from models.modules.linear_layer import ProjectionLayer
+from models.core.embeddings import InputEmbeddings
+from models.core.positional_encoding import PositionalEncoding
+from models.core.linear_layer import ProjectionLayer
+from models.transformer.decoder_v2 import DecoderWithNewTechniques
+from models.transformer.encoder_v2 import EncoderWithNewTechniques
 
 
-class Transformer(nn.Module):
+class TransformerWithNewTechniques(nn.Module):
     def __init__(self, src_vocab_size, tgt_vocab_size, src_seq_len, tgt_seq_len,
                  d_model=512, num_layers=6, num_heads=8, dropout=0.1, d_ff=2048):
         super().__init__()
@@ -16,8 +16,8 @@ class Transformer(nn.Module):
         self.tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
         self.src_pos = PositionalEncoding(d_model, src_seq_len)
         self.tgt_pos = PositionalEncoding(d_model, tgt_seq_len)
-        self.encoder = Encoder(d_model, num_layers, num_heads, d_ff, dropout)
-        self.decoder = Decoder(d_model, num_layers, num_heads, d_ff, dropout)
+        self.encoder = EncoderWithNewTechniques(d_model, num_layers, num_heads, d_ff, dropout)
+        self.decoder = DecoderWithNewTechniques(d_model, num_layers, num_heads, d_ff, dropout)
         self.projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
         self._init_weights()
 
@@ -65,7 +65,7 @@ class Transformer(nn.Module):
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    transformer = Transformer(
+    transformer = TransformerWithNewTechniques(
         src_vocab_size=256,
         tgt_vocab_size=256,
         src_seq_len=100,

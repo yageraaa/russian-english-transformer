@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from models.modules.multihead_attention import MultiHeadAttention
-from models.modules.feed_forward import FeedForwardLayer
-from models.modules.residual_connection import ResidualConnection
+from models.core.multihead_attention import MultiHeadAttention
+from models.core.feed_forward import FeedForwardLayer
+from models.core.residual_connection import ResidualConnection
 
 class DecoderBlock(nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ff: int, dropout: float):

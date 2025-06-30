@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from models.modules.qk_norm import QKNorm
-from models.modules.swiglu import SwiGLU
-from models.modules.residual_connection_rms import ResidualConnectionWithRMSNorm
+from models.core.qk_norm import QKNorm
+from models.core.swiglu import SwiGLU
+from models.core.residual_connection_rms import ResidualConnectionWithRMSNorm
 
 class DecoderBlockWithNewTechniques(nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ff: int, dropout: float):

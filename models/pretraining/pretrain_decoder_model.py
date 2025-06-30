@@ -1,12 +1,11 @@
 import torch
 import torch.nn as nn
-from models.modules.rms_norm import RMSNorm
-from models.modules.swiglu import SwiGLU
-from models.modules.qk_norm import QKNorm
-from models.modules.positional_encoding import PositionalEncoding
-from models.modules.embeddings import InputEmbeddings
-from models.modules.residual_connection_rms import ResidualConnectionWithRMSNorm
-from models.modules.decoder_layer_v2 import DecoderBlockWithNewTechniques
+from models.core.rms_norm import RMSNorm
+from models.core.swiglu import SwiGLU
+from models.core.qk_norm import QKNorm
+from models.core.positional_encoding import PositionalEncoding
+from models.core.embeddings import InputEmbeddings
+from models.core.residual_connection_rms import ResidualConnectionWithRMSNorm
 
 
 class DecoderOnlyModel(nn.Module):
