@@ -7,6 +7,7 @@ data:
   tokenizer_dir: ${data.base_dir}/tokenizer/vocabs
   model_dir: ${data.base_dir}/checkpoints
   decoder_weights: ${data.base_dir}/decoder_checkpoints/decoder_pretrain_17.pt
+  model_weights: ${data.model_dir}/transformer_00.pt
   log_dir: ${data.base_dir}/logs
 
 training:
