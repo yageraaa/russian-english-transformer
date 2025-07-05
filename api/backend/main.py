@@ -6,7 +6,8 @@ from jose import JWTError, jwt
 from datetime import datetime
 from api.backend.database import SessionLocal, User, AuthLog, TranslationLog, init_db
 from api.backend.models import UserCreate, UserLogin, Token, TranslationResponse
-from api.backend.utils import verify_password, get_password_hash, create_access_token, translate_text
+from api.backend.utils import verify_password, get_password_hash, create_access_token
+from api.ml.translator import translate_text
 from api.backend.s3_client import s3
 from api.backend.settings import settings
 from io import BytesIO
