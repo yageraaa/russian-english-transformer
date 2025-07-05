@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from models.core.qk_norm import QKNorm
 from models.core.swiglu import SwiGLU
-from models.core.residual_connection_rms import ResidualConnectionWithRMSNorm
+from models.core.residual_connection import ResidualConnection
 
 class DecoderBlockWithNewTechniques(nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ff: int, dropout: float):
@@ -11,7 +11,7 @@ class DecoderBlockWithNewTechniques(nn.Module):
         self.cross_attention = QKNorm(d_model, num_heads, dropout)
         self.feed_forward = SwiGLU(d_model, d_ff, dropout)
         self.residuals = nn.ModuleList([
-            ResidualConnectionWithRMSNorm(d_model, dropout) for _ in range(3)
+            ResidualConnection(d_model, dropout) for _ in range(3)
         ])
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor,

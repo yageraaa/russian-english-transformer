@@ -5,7 +5,7 @@ from models.core.swiglu import SwiGLU
 from models.core.qk_norm import QKNorm
 from models.core.positional_encoding import PositionalEncoding
 from models.core.embeddings import InputEmbeddings
-from models.core.residual_connection_rms import ResidualConnectionWithRMSNorm
+from models.core.residual_connection import ResidualConnection
 
 
 class DecoderOnlyModel(nn.Module):
@@ -61,7 +61,7 @@ class SelfAttentionDecoderBlock(nn.Module):
         self.cross_attention = QKNorm(d_model, num_heads, dropout)
         self.feed_forward = SwiGLU(d_model, d_ff, dropout)
         self.residuals = nn.ModuleList([
-            ResidualConnectionWithRMSNorm(d_model, dropout) for _ in range(3)
+            ResidualConnection(d_model, dropout) for _ in range(3)
         ])
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor):
