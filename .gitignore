@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.egg-info/
+
+# Environment variables
+api/.env
+
+# IDE
+.idea/
+*.iml
+
+# Logs
+*.log
+/tmp/uvicorn.log
+
+# Docker
+*.dockerignore
+Dockerfile*.bak
+
+# Temporary files
+*.swp
+*.swo
+*~
