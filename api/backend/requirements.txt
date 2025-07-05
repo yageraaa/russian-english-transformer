@@ -4,8 +4,8 @@ pydantic
 sqlalchemy
 psycopg2-binary
 boto3
-python-jose
-passlib
+python-jose[cryptography]
+passlib[bcrypt]
 python-dotenv
 torch
 omegaconf
