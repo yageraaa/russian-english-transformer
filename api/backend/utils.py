@@ -23,7 +23,7 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-CONFIG_PATH = "/home/gera/PycharmProjects/russian-english-transformer/models/configs/config_wmt.yaml"
+CONFIG_PATH = str(Path("models") / "configs" / "config_wmt.yaml")
 cfg = OmegaConf.load(CONFIG_PATH)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
