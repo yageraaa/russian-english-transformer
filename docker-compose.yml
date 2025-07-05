@@ -16,7 +16,6 @@ services:
       retries: 5
     networks:
       - app-network
-
   minio:
     image: quay.io/minio/minio:latest
     command: server /data --console-address ":9001"
@@ -35,11 +34,47 @@ services:
       retries: 5
     networks:
       - app-network
-
+  backend:
+    build:
+      context: ./api/backend
+      dockerfile: Dockerfile
+    environment:
+      - PYTHONPATH=/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./api/.env:/app/api/.env
+      - ./models:/app/models
+      - ./tokenizer:/app/tokenizer
+    networks:
+      - app-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+  frontend:
+    build:
+      context: ./api/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    volumes:
+      - ./api/.env:/app/api/.env
+    networks:
+      - app-network
 volumes:
   postgres_data:
   minio_data:
-
 networks:
   app-network:
     driver: bridge
