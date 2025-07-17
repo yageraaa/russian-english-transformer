@@ -16,6 +16,7 @@ services:
       retries: 5
     networks:
       - app-network
+
   minio:
     image: quay.io/minio/minio:latest
     command: server /data --console-address ":9001"
@@ -34,12 +35,22 @@ services:
       retries: 5
     networks:
       - app-network
+
   backend:
     build:
-      context: ./api/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/backend/Dockerfile
+    env_file:
+      - ./api/.env
     environment:
       - PYTHONPATH=/app
+    volumes:
+      - ./api:/app/api
+      - ./models:/app/api/models
+      - ./checkpoints:/app/api/checkpoints
+      - ./tokenizer:/app/api/tokenizer
+      - ./logs:/app/api/logs
+      - ./outputs:/app/api/outputs
     ports:
       - "8000:8000"
     depends_on:
@@ -47,34 +58,37 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    volumes:
-      - ./api/.env:/app/api/.env
-      - ./models:/app/models
-      - ./tokenizer:/app/tokenizer
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
     networks:
       - app-network
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+
   frontend:
     build:
-      context: ./api/frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/frontend/Dockerfile
     ports:
       - "8501:8501"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    environment:
+      - API_URL=http://backend:8000
     volumes:
-      - ./api/.env:/app/api/.env
+      - ./api:/app/api
+    command: >
+      streamlit run api/frontend/app.py --server.port 8501 --server.address=0.0.0.0
     networks:
       - app-network
+
 volumes:
   postgres_data:
   minio_data:
+
 networks:
   app-network:
     driver: bridge
