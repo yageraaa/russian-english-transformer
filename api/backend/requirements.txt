@@ -9,3 +9,6 @@ passlib[bcrypt]
 python-dotenv
 torch
 omegaconf
+python-multipart
+numpy
+torchinfo
