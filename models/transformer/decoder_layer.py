@@ -1,16 +1,18 @@
 import torch
 import torch.nn as nn
-from models.core.multihead_attention import MultiHeadAttention
-from models.core.feed_forward import FeedForwardLayer
+from models.core.qk_norm import QKNorm
+from models.core.swiglu import SwiGLU
 from models.core.residual_connection import ResidualConnection
 
-class DecoderBlock(nn.Module):
+class DecoderBlockWithNewTechniques(nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ff: int, dropout: float):
         super().__init__()
-        self.self_attention = MultiHeadAttention(d_model, num_heads, dropout)
-        self.cross_attention = MultiHeadAttention(d_model, num_heads, dropout)
-        self.feed_forward = FeedForwardLayer(d_model, d_ff, dropout)
-        self.residuals = nn.ModuleList([ResidualConnection(d_model, dropout) for _ in range(3)])
+        self.self_attention = QKNorm(d_model, num_heads, dropout)
+        self.cross_attention = QKNorm(d_model, num_heads, dropout)
+        self.feed_forward = SwiGLU(d_model, d_ff, dropout)
+        self.residuals = nn.ModuleList([
+            ResidualConnection(d_model, dropout) for _ in range(3)
+        ])
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor,
                 src_mask: torch.Tensor, tgt_mask: torch.Tensor):
@@ -30,7 +32,7 @@ if __name__ == "__main__":
     encoder_output = torch.randn(batch_size, seq_len, d_model)
     src_mask = torch.ones(batch_size, 1, 1, seq_len)
     tgt_mask = torch.tril(torch.ones(seq_len, seq_len)).unsqueeze(0).unsqueeze(0)
-    decoder_block = DecoderBlock(d_model, num_heads, d_ff, dropout)
+    decoder_block = DecoderBlockWithNewTechniques(d_model, num_heads, d_ff, dropout)
     output = decoder_block(x, encoder_output, src_mask, tgt_mask)
 
     print(f"Input shape: {x.shape}")

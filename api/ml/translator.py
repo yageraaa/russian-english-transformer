@@ -2,11 +2,11 @@ import torch
 from pathlib import Path
 from omegaconf import OmegaConf
 from tokenizer.tokenizer import Tokenizer
-from models.transformer.transformer_wmt import TransformerWithNewTechniques
+from models.transformer.transformer import TransformerWithNewTechniques
 from api.backend.settings import settings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = BASE_DIR / "models" / "configs" / "config_wmt.yaml"
+CONFIG_PATH = BASE_DIR / "models" / "configs" / "config.yaml"
 cfg = OmegaConf.load(CONFIG_PATH)
 
 model_weights_path = Path(cfg.data.model_weights)

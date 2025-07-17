@@ -1,13 +1,17 @@
 import torch
 import torch.nn as nn
-from models.core.layer_norm import LayerNormalization
-from models.transformer.encoder_layer import EncoderBlock
+from models.core.rms_norm import RMSNorm
+from models.transformer.encoder_layer import EncoderBlockWithNewTechniques
 
-class Encoder(nn.Module):
-    def __init__(self,d_model: int,num_layers: int,num_heads: int,d_ff: int,dropout: float):
+
+class EncoderWithNewTechniques(nn.Module):
+    def __init__(self, d_model: int, num_layers: int, num_heads: int, d_ff: int, dropout: float):
         super().__init__()
-        self.layers = nn.ModuleList([EncoderBlock(d_model, num_heads, d_ff, dropout)for _ in range(num_layers)])
-        self.norm = LayerNormalization(d_model)
+        self.layers = nn.ModuleList([
+            EncoderBlockWithNewTechniques(d_model, num_heads, d_ff, dropout)
+            for _ in range(num_layers)
+        ])
+        self.norm = RMSNorm(d_model)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         for layer in self.layers:
@@ -20,7 +24,8 @@ if __name__ == "__main__":
     num_heads = 8
     d_ff = 2048
     dropout = 0.1
-    encoder = Encoder(
+
+    encoder = EncoderWithNewTechniques(
         d_model=d_model,
         num_layers=num_layers,
         num_heads=num_heads,
