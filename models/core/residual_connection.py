@@ -5,7 +5,7 @@ from models.core.rms_norm import RMSNorm
 
 
 class ResidualConnection(nn.Module):
-    def __init__(self, features: int, dropout: float, norm_type: str = "layer"):
+    def __init__(self, features: int, dropout: float, norm_type: str = "rms"):
         super().__init__()
         if norm_type == "layer":
             self.norm = LayerNormalization(features)
