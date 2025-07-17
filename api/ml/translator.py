@@ -6,8 +6,13 @@ from models.transformer.transformer_wmt import TransformerWithNewTechniques
 from api.backend.settings import settings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = str(BASE_DIR / "models" / "configs" / "config_wmt.yaml")
+CONFIG_PATH = BASE_DIR / "models" / "configs" / "config_wmt.yaml"
 cfg = OmegaConf.load(CONFIG_PATH)
+
+model_weights_path = Path(cfg.data.model_weights)
+if not model_weights_path.is_absolute():
+    model_weights_path = BASE_DIR / model_weights_path
+model_weights_path = model_weights_path.resolve()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -30,9 +35,9 @@ model = TransformerWithNewTechniques(
     d_ff=cfg.model.d_ff
 ).to(device)
 
-model_weights_path = cfg.data.model_weights
-checkpoint = torch.load(model_weights_path, map_location=device, weights_only=True)
-model.load_state_dict(checkpoint["model_state_dict"] if "model_state_dict" in checkpoint else checkpoint)
+checkpoint = torch.load(model_weights_path, map_location=device)
+state_dict = checkpoint.get("model_state_dict", checkpoint)
+model.load_state_dict(state_dict)
 model.eval()
 
 def translate_text(input_text: str) -> str:
