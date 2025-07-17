@@ -1,5 +1,8 @@
+import os
 import streamlit as st
 import requests
+
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="Russian to English Translator", layout="centered")
 st.title("Russian to English Translator")
@@ -24,7 +27,7 @@ def login_page():
                 return
             try:
                 response = requests.post(
-                    "http://localhost:8000/token",
+                    f"{API_URL}/token",
                     json={"username": username, "password": password}
                 )
                 response.raise_for_status()
@@ -65,7 +68,7 @@ def register_page():
                 return
             try:
                 response = requests.post(
-                    "http://localhost:8000/register",
+                    f"{API_URL}/register",
                     json={"username": username, "password": password}
                 )
                 response.raise_for_status()
@@ -94,7 +97,6 @@ def translate_page():
         return
 
     st.subheader(f"Translation (user: {st.session_state.username})")
-    # Выбор типа ввода вне формы
     input_type = st.radio("Select input type", ("Text", "File"), key="translate_input_type")
 
     with st.form("translate_form", clear_on_submit=True):
@@ -119,42 +121,52 @@ def translate_page():
 
         if submit_button:
             headers = {"Authorization": f"Bearer {st.session_state.token}"}
+            original_text = None
             try:
                 if input_type == "Text":
                     if not input_text or not input_text.strip():
                         st.error("Text must not be empty")
                         return
-                    if len(input_text.strip()) > 1000:
+                    original_text = input_text.strip()
+                    if len(original_text) > 1000:
                         st.error("Text exceeds 1000 characters")
                         return
                     response = requests.post(
-                        "http://localhost:8000/translate",
-                        json={"text": input_text.strip()},
+                        f"{API_URL}/translate",
+                        json={"text": original_text},
                         headers={**headers, "Content-Type": "application/json"}
                     )
                 else:
                     if not file:
                         st.error("No file uploaded")
                         return
-                    file_content = file.read().decode("utf-8")
-                    if not file_content.strip():
+                    file_content = file.read().decode("utf-8").strip()
+                    if not file_content:
                         st.error("File must not be empty")
                         return
-                    if len(file_content.strip()) > 1000:
+                    original_text = file_content
+                    if len(original_text) > 1000:
                         st.error("File content exceeds 1000 characters")
                         return
                     response = requests.post(
-                        "http://localhost:8000/translate",
-                        files={"file": (file.name, file_content.encode("utf-8"), "text/plain")},
+                        f"{API_URL}/translate",
+                        files={"file": (file.name, original_text.encode("utf-8"), "text/plain")},
                         headers=headers
                     )
 
                 response.raise_for_status()
                 result = response.json()
                 translation = result.get("translation", "Translation not received")
+
+                st.markdown("### Original Text")
+                st.text_area("Input", value=original_text, height=150, disabled=True)
+
+                st.markdown("### English Translation")
+                st.text_area("Translation", value=translation, height=150, disabled=True)
+
                 if input_type == "File" and result.get("s3_path"):
                     st.success(f"File uploaded to S3: {result['s3_path']}")
-                st.text_area("English Translation", value=translation, height=150, disabled=True)
+
             except requests.HTTPError as e:
                 if e.response.status_code == 401:
                     st.error("Session expired. Please log in again.")
