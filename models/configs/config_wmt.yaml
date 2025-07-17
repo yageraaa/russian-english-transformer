@@ -1,15 +1,12 @@
 defaults:
   - _self_
-
 data:
-  base_dir: /home/gera/PycharmProjects/russian-english-transformer
+  base_dir: /app/api
   data_dir: ${data.base_dir}/models/data
   tokenizer_dir: ${data.base_dir}/tokenizer/vocabs
   model_dir: ${data.base_dir}/checkpoints
-  decoder_weights: ${data.base_dir}/decoder_checkpoints/decoder_pretrain_17.pt
   model_weights: ${data.model_dir}/transformer_00.pt
   log_dir: ${data.base_dir}/logs
-
 training:
   batch_size: 16
   num_epochs: 30
@@ -18,29 +15,24 @@ training:
   seq_len: 128
   validation_interval_steps: 10000
   validation_samples: 10000
-
 model:
   d_model: 512
   num_heads: 8
   num_layers: 6
   d_ff: 2048
-
 language:
   src_lang: ru
   tgt_lang: en
-
 dataset:
   name: wmt19
   config_name: ru-en
   train_split: train
   validation_split: validation
-
 vocabs:
   ru_token_to_id: ${data.tokenizer_dir}/ru-vocab/ru_token_to_id.json
-  en_token_to_id: ${data.tokenizer_dir}/en-vocab/en_token_to_id.json
   ru_id_to_token: ${data.tokenizer_dir}/ru-vocab/ru_id_to_token.json
+  en_token_to_id: ${data.tokenizer_dir}/en-vocab/en_token_to_id.json
   en_id_to_token: ${data.tokenizer_dir}/en-vocab/en_id_to_token.json
-
 logging:
   model_basename: transformer_
   preload: latest
@@ -49,8 +41,7 @@ logging:
   example_interval: 1
   log_examples: True
   run_id: "5lo4muld"
-  resume: "must"
-
+  resume: "never"
 hydra:
   run:
     dir: ${data.base_dir}/outputs
