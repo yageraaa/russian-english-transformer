@@ -1,7 +1,8 @@
 defaults:
   - _self_
 data:
-  base_dir: /app/api
+  base_dir: /home/gera/PycharmProjects/russian-english-transformer
+  #base_dir: /app/api
   data_dir: ${data.base_dir}/models/data
   tokenizer_dir: ${data.base_dir}/tokenizer/vocabs
   model_dir: ${data.base_dir}/checkpoints
@@ -41,8 +42,8 @@ logging:
   log_interval: 50
   example_interval: 1
   log_examples: True
-  run_id: "5lo4muld"
-  resume: "never"
+  #run_id: "5lo4muld"
+  #resume: must
 hydra:
   run:
     dir: ${data.base_dir}/outputs
