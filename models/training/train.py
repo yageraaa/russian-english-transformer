@@ -17,7 +17,7 @@ import signal
 import gc
 
 
-@hydra.main(config_path="../configs", config_name="config_wmt", version_base="1.2")
+@hydra.main(config_path="../configs", config_name="config", version_base="1.2")
 def train_model(cfg: DictConfig):
     accelerator = Accelerator()
     device = accelerator.device
@@ -26,7 +26,6 @@ def train_model(cfg: DictConfig):
         project="transformer-ru-en",
         id=cfg.logging.run_id,
         resume=cfg.logging.resume,
-        # name=f"{cfg.logging.experiment_name}-{int(time())}",
         config=hydra.utils.instantiate(cfg)
     )
 
@@ -55,12 +54,14 @@ def train_model(cfg: DictConfig):
         d_ff=cfg.model.d_ff
     )
 
-    if Path(cfg.data.decoder_weights).exists():
+    if cfg.training.use_pretrained_decoder and Path(cfg.data.decoder_weights).exists():
         accelerator.print(f"Loading pretrained decoder weights from {cfg.data.decoder_weights}...")
         load_pretrained_decoder_weights(model, cfg.data.decoder_weights, accelerator)
     else:
         accelerator.print(
-            f"Warning: Decoder weights file {cfg.data.decoder_weights} not found. Using random initialization.")
+            f"Warning: Using random initialization for decoder. "
+            f"{'Pretrained decoder weights disabled' if not cfg.training.use_pretrained_decoder else f'Decoder weights file {cfg.data.decoder_weights} not found.'}"
+        )
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
     loss_fn = nn.CrossEntropyLoss(
@@ -91,7 +92,7 @@ def train_model(cfg: DictConfig):
 
         batch_iterator = tqdm(
             enumerate(train_ds),
-            desc=f"Training Batch",
+            desc="Training Batch",
             total=len(train_ds),
             leave=False,
             disable=not accelerator.is_local_main_process
