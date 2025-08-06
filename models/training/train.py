@@ -24,7 +24,7 @@ def train_model(cfg: DictConfig):
 
     wandb.init(
         project="transformer-ru-en",
-        entity="yageraaa-mtuci",
+        entity="yageraaa-mtuci-org",
         #id=cfg.logging.run_id,
         #resume=cfg.logging.resume,
         config=hydra.utils.instantiate(cfg)
