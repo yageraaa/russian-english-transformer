@@ -2,7 +2,15 @@
 
 **Author**: German Berezin
 
-This project provides a web-based Russian-to-English translation application using a transformer model, deployed via Docker with a Streamlit frontend, FastAPI backend, PostgreSQL database, and MinIO storage. It also includes scripts for training the transformer model.
+This project provides a web-based Russian-to-English translation application using a transformer model, deployed via Docker with a Streamlit frontend, FastAPI backend, PostgreSQL database, and MinIO storage. It also includes scripts for training the transformer model with MLflow experiment tracking.
+
+## Features
+
+- **Translation API**: FastAPI backend for Russian-to-English translation
+- **Web Interface**: Streamlit frontend for easy translation
+- **Experiment Tracking**: MLflow integration for monitoring training progress
+- **Model Management**: Local storage of experiments and model artifacts
+- **BLEU Evaluation**: Improved BLEU score calculation for accurate translation quality assessment
 
 ## Prerequisites
 
@@ -27,6 +35,7 @@ This project provides a web-based Russian-to-English translation application usi
   chmod +x mc
   sudo mv mc /usr/local/bin/
   ```
+- **MLflow**: For experiment tracking and model management (included in requirements.txt).
 
 ## Project Structure
 
@@ -84,6 +93,8 @@ russian-english-transformer/
 │       └── transformer.py
 ├── outputs/
 │   └── train_wmt.log
+├── mlruns/
+│   └── (MLflow experiment tracking data)
 ├── requirements.txt
 └── tokenizer/
     ├── data/
@@ -279,6 +290,8 @@ base_dir: /app/api
    ```bash
    pip install -r requirements.txt
    ```
+   
+   This will install MLflow for experiment tracking along with other required packages.
 
 3. **Update `config.yaml`**
    Ensure `base_dir` is set to the project root:
@@ -304,11 +317,26 @@ base_dir: /app/api
    python models/training/train.py
    ```
    This trains the model using `models/configs/config.yaml` and saves weights to `checkpoints/transformer_00.pt`.
+   
+   **Experiment Tracking**: Training progress is automatically logged using MLflow. You can view the experiments by running:
+   ```bash
+   python start_mlflow_ui.py
+   ```
+   Then open `http://localhost:5000` in your browser to view training metrics, loss curves, and example translations.
 
 6. **Verify Trained Model**
    Check the output weights:
    ```bash
    ls -l checkpoints/transformer_00.pt
+   ```
+   
+   **Alternative Training Scripts**: You can also use the convenience scripts:
+   ```bash
+   # Main training
+   python run_training.py
+   
+   # Decoder pretraining
+   python run_training.py pretrain
    ```
 
 ## Troubleshooting
@@ -327,7 +355,20 @@ base_dir: /app/api
    sudo systemctl restart docker
    ```
 
-2. **Connection Refused Error**
+2. **MLflow UI Issues**
+   If MLflow UI doesn't start or shows no data:
+   ```bash
+   # Check if MLflow is installed
+   pip list | grep mlflow
+   
+   # Ensure training has been run to generate experiment data
+   ls -la mlruns/
+   
+   # Try running MLflow UI directly
+   mlflow ui --backend-store-uri file:./mlruns --host 0.0.0.0 --port 5000
+   ```
+
+3. **Connection Refused Error**
    If `frontend` logs show `Connection refused`:
    ```bash
    docker compose logs frontend
@@ -338,24 +379,24 @@ base_dir: /app/api
    ```
    Ensure `API_URL=http://backend:8000` is correctly set in the `frontend` service in `docker-compose.yml`. If the issue persists, check if `api/frontend/app.py` is using `os.getenv("API_URL")` correctly.
 
-3. **Streamlit Not Starting**
+4. **Streamlit Not Starting**
    Check logs:
    ```bash
    docker compose logs frontend
    ```
    Ensure `api/frontend/app.py` is accessible and `api/frontend/requirements.txt` includes `streamlit`.
 
-4. **Model Weights Missing**
+5. **Model Weights Missing**
    If `transformer_00.pt` is missing, ensure it is placed in the `checkpoints/` directory or train the model as described above.
 
-5. **Network Issues**
+6. **Network Issues**
    Verify containers are in the same network:
    ```bash
    docker inspect russian-english-transformer-frontend-1 | grep Network
    docker inspect russian-english-transformer-backend-1 | grep Network
    ```
 
-6. **Conda Environment Issues**
+7. **Conda Environment Issues**
    If `pip install -r requirements.txt` fails, ensure the Conda environment is active:
    ```bash
    conda activate translator
@@ -371,3 +412,5 @@ base_dir: /app/api
 - **Model Weights**: If `transformer_00.pt` is not provided, train the model or manually place it in the `checkpoints/` directory.
 - **SECRET_KEY**: Generate a new `SECRET_KEY` for security using `openssl rand -hex 32`. Do not reuse example keys.
 - **Training Data**: Ensure the dataset matches the format expected by `models/training/train.py` (see `models/configs/config.yaml`).
+- **Experiment Tracking**: MLflow automatically logs training metrics, loss curves, and example translations. All experiment data is stored locally in the `mlruns/` directory.
+- **BLEU Score**: The model uses an improved BLEU metric calculation that normalizes text and handles punctuation properly, providing more accurate evaluation of translation quality.
