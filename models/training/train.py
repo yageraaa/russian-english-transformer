@@ -16,6 +16,7 @@ from tokenizer.tokenizer import Tokenizer
 from typing import Optional
 import signal
 import gc
+import re
 
 
 @hydra.main(config_path="../configs", config_name="config", version_base="1.2")
@@ -319,9 +320,22 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
 
 
 def calculate_bleu(prediction: str, reference: str) -> float:
-    pred_tokens = prediction.split()
-    ref_tokens = [reference.split()]
-    return sentence_bleu(ref_tokens, pred_tokens, smoothing_function=SmoothingFunction().method1)
+    def normalize_text(text):
+        text = text.lower()
+        text = re.sub(r'[^\w\s]', ' ', text)
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip()
+    
+    pred_normalized = normalize_text(prediction)
+    ref_normalized = normalize_text(reference)
+    
+    pred_tokens = pred_normalized.split()
+    ref_tokens = ref_normalized.split()
+    
+    if not pred_tokens or not ref_tokens:
+        return 0.0
+    
+    return sentence_bleu([ref_tokens], pred_tokens, smoothing_function=SmoothingFunction().method1)
 
 
 def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: int, accelerator):
