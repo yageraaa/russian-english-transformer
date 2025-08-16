@@ -21,7 +21,11 @@ import re
 
 @hydra.main(config_path="../configs", config_name="config", version_base="1.2")
 def train_model(cfg: DictConfig):
-    accelerator = Accelerator()
+    accelerator = Accelerator(
+        mixed_precision=getattr(cfg.training, 'mixed_precision', 'no'),
+        gradient_accumulation_steps=getattr(cfg.training, 'gradient_accumulation_steps', 1),
+        log_with="mlflow"
+    )
     device = accelerator.device
 
     mlflow.set_tracking_uri("file:./mlruns")
@@ -42,6 +46,12 @@ def train_model(cfg: DictConfig):
     accelerator.print(f"Train dataset size: {len(train_ds.dataset)}")
     accelerator.print(f"Validation dataset size: {len(val_ds.dataset)}")
     accelerator.print("Initializing model...")
+    accelerator.print(f"Using device: {device}")
+    accelerator.print(f"Number of GPUs: {torch.cuda.device_count() if torch.cuda.is_available() else 0}")
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            accelerator.print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+    
     model = TransformerWithNewTechniques(
         src_vocab_size=len(tokenizer.ru_token_to_id),
         tgt_vocab_size=len(tokenizer.en_token_to_id),
@@ -82,7 +92,9 @@ def train_model(cfg: DictConfig):
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            accelerator.print(f"GPU memory cleared. Current memory usage: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+            for i in range(torch.cuda.device_count()):
+                memory_allocated = torch.cuda.memory_allocated(i) / 1024**3
+                accelerator.print(f"GPU {i} memory usage: {memory_allocated:.2f} GB")
         
         mlflow.end_run()
         accelerator.print("Training stopped safely.")
@@ -114,9 +126,12 @@ def train_model(cfg: DictConfig):
                                           inputs['decoder_mask'])
             proj_output = model.project(decoder_output)
             loss = loss_fn(proj_output.view(-1, len(tokenizer.en_token_to_id)), inputs['label'].view(-1))
+            
             accelerator.backward(loss)
-            optimizer.step()
-            optimizer.zero_grad()
+            
+            if accelerator.sync_gradients:
+                optimizer.step()
+                optimizer.zero_grad()
 
             log_data = {
                 "train/loss": loss.item(),
@@ -166,7 +181,9 @@ def train_model(cfg: DictConfig):
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-        accelerator.print(f"GPU memory cleared. Final memory usage: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+        for i in range(torch.cuda.device_count()):
+            memory_allocated = torch.cuda.memory_allocated(i) / 1024**3
+            accelerator.print(f"GPU {i} final memory usage: {memory_allocated:.2f} GB")
     
     accelerator.print("Training finished successfully!")
 
