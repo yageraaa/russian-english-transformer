@@ -1,4 +1,5 @@
-import wandb
+import mlflow
+import mlflow.pytorch
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
@@ -16,11 +17,10 @@ from tokenizer.tokenizer import Tokenizer
 def pretrain_decoder(cfg: DictConfig):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    wandb.init(
-        project="transformer-en-decoder-pretrain",
-        name=f"decoder-pretrain-{int(time())}",
-        config=hydra.utils.instantiate(cfg)
-    )
+    mlflow.set_tracking_uri("file:./mlruns")
+    mlflow.set_experiment("transformer-en-decoder-pretrain")
+    mlflow.start_run(run_name=f"decoder-pretrain-{int(time())}")
+    mlflow.log_params(hydra.utils.instantiate(cfg))
 
     tokenizer = Tokenizer({
         'en_token_to_id': cfg.vocabs.en_token_to_id,
@@ -86,18 +86,18 @@ def pretrain_decoder(cfg: DictConfig):
                 "step": global_step
             }
 
-            wandb.log(log_data)
+            mlflow.log_metrics(log_data, step=global_step)
             global_step += 1
 
         val_loss = run_validation(model, val_ds, device, loss_fn)
-        wandb.log({"val/loss": val_loss, "epoch": epoch})
+        mlflow.log_metrics({"val/loss": val_loss, "epoch": epoch}, step=global_step)
 
         if getattr(cfg.logging, 'log_examples', True) and epoch % cfg.logging.example_interval == 0:
-            wandb.log(log_generations(model, tokenizer, device, cfg, epoch))
+            log_generations_mlflow(model, tokenizer, device, cfg, epoch)
 
         save_checkpoint(cfg, epoch, global_step, model, optimizer, prefix="decoder_pretrain_")
 
-    wandb.finish()
+    mlflow.end_run()
 
 
 def load_checkpoint(cfg: DictConfig, model, optimizer):
@@ -136,7 +136,7 @@ def run_validation(model, val_loader, device, loss_fn):
     return total_loss / len(val_loader)
 
 
-def log_generations(model, tokenizer, device, cfg: DictConfig, epoch: int):
+def log_generations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: int):
     examples = [
         "hello, how are you?",
         "the weather is nice today.",
@@ -172,7 +172,15 @@ def log_generations(model, tokenizer, device, cfg: DictConfig, epoch: int):
             print(f"Epoch {epoch} - Prompt: {text}, Generation: {generated_text}")
             generations.append([text, generated_text])
 
-    return {f"generations_epoch_{epoch}": wandb.Table(columns=["Prompt", "Generation"], data=generations)}
+    generation_text = f"Epoch {epoch} Generations:\n"
+    for prompt, gen in generations:
+        generation_text += f"Prompt: {prompt}\nGeneration: {gen}\n\n"
+    
+    mlflow.log_text(generation_text, f"generations_epoch_{epoch}.txt")
+    
+    for i, (prompt, gen) in enumerate(generations):
+        mlflow.log_metric(f"generation_{i}_prompt", prompt, step=epoch)
+        mlflow.log_metric(f"generation_{i}_text", gen, step=epoch)
 
 
 def get_weights_file_path(cfg: DictConfig, epoch: int, prefix="decoder_pretrain_") -> str:

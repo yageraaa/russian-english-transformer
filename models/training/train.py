@@ -1,4 +1,5 @@
-import wandb
+import mlflow
+import mlflow.pytorch
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -22,13 +23,10 @@ def train_model(cfg: DictConfig):
     accelerator = Accelerator()
     device = accelerator.device
 
-    wandb.init(
-        project="transformer-ru-en",
-        entity="yageraaa-mtuci",
-        #id=cfg.logging.run_id,
-        #resume=cfg.logging.resume,
-        config=hydra.utils.instantiate(cfg)
-    )
+    mlflow.set_tracking_uri("file:./mlruns")
+    mlflow.set_experiment("transformer-ru-en")
+    mlflow.start_run(run_name=f"transformer-ru-en-{int(time())}")
+    mlflow.log_params(hydra.utils.instantiate(cfg))
 
     tokenizer = Tokenizer({
         'ru_token_to_id': cfg.vocabs.ru_token_to_id,
@@ -78,7 +76,7 @@ def train_model(cfg: DictConfig):
         accelerator.print("Interrupt detected, saving checkpoint...")
         save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
         accelerator.print(f"Checkpoint saved at {get_weights_file_path(cfg, epoch)}")
-        wandb.finish()
+        mlflow.end_run()
         exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -121,7 +119,7 @@ def train_model(cfg: DictConfig):
             batch_iterator.set_postfix(loss=f"{loss.item():.4f}", lr=f"{optimizer.param_groups[0]['lr']:.6f}")
 
             if accelerator.is_local_main_process:
-                wandb.log(log_data)
+                mlflow.log_metrics(log_data, step=global_step)
 
             global_step += 1
 
@@ -130,10 +128,10 @@ def train_model(cfg: DictConfig):
                 val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg, accelerator)
 
                 if accelerator.is_local_main_process:
-                    wandb.log({"val/loss": val_loss, "epoch": epoch, "step": global_step, **val_metrics})
+                    mlflow.log_metrics({"val/loss": val_loss, "epoch": epoch, "step": global_step, **val_metrics}, step=global_step)
 
                     if getattr(cfg.logging, 'log_examples', True):
-                        wandb.log(log_translations(model, tokenizer, device, cfg, epoch, accelerator))
+                        log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator)
 
                 save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
                 model.train()
@@ -144,16 +142,16 @@ def train_model(cfg: DictConfig):
         val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg, accelerator)
 
         if accelerator.is_local_main_process:
-            wandb.log({"val/loss": val_loss, "epoch": epoch, "step": global_step, **val_metrics})
+            mlflow.log_metrics({"val/loss": val_loss, "epoch": epoch, "step": global_step, **val_metrics}, step=global_step)
 
             if getattr(cfg.logging, 'log_examples', True):
-                wandb.log(log_translations(model, tokenizer, device, cfg, epoch, accelerator))
+                log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator)
 
         save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
         gc.collect()
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
-    wandb.finish()
+    mlflow.end_run()
 
 
 def load_pretrained_decoder_weights(model, weights_path, accelerator):
@@ -326,7 +324,7 @@ def calculate_bleu(prediction: str, reference: str) -> float:
     return sentence_bleu(ref_tokens, pred_tokens, smoothing_function=SmoothingFunction().method1)
 
 
-def log_translations(model, tokenizer, device, cfg: DictConfig, epoch: int, accelerator):
+def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: int, accelerator):
     examples = [
         ("Привет, как дела?", "Hello, how are you?"),
         ("Сегодня хорошая погода.", "The weather is nice today."),
@@ -359,7 +357,16 @@ def log_translations(model, tokenizer, device, cfg: DictConfig, epoch: int, acce
             accelerator.print(f"Epoch {epoch} - Source: {src}, Reference: {ref}, Translation: {translation}")
             translations.append([src, ref, translation])
 
-    return {f"examples_epoch_{epoch}": wandb.Table(columns=["Source", "Reference", "Translation"], data=translations)}
+    translation_text = f"Epoch {epoch} Translations:\n"
+    for src, ref, trans in translations:
+        translation_text += f"Source: {src}\nReference: {ref}\nTranslation: {trans}\n\n"
+    
+    mlflow.log_text(translation_text, f"translations_epoch_{epoch}.txt")
+    
+    for i, (src, ref, trans) in enumerate(translations):
+        mlflow.log_metric(f"example_{i}_source", src, step=epoch)
+        mlflow.log_metric(f"example_{i}_reference", ref, step=epoch)
+        mlflow.log_metric(f"example_{i}_translation", trans, step=epoch)
 
 
 def get_weights_file_path(cfg: DictConfig, epoch: int) -> str:
