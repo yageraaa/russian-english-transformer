@@ -52,6 +52,12 @@ def pretrain_decoder(cfg: DictConfig):
         dropout=cfg.training.dropout,
         d_ff=cfg.model.d_ff
     ).to(device)
+    
+    if getattr(cfg.training, 'use_data_parallel', False) and torch.cuda.device_count() > 1:
+        print(f"Using DataParallel on {torch.cuda.device_count()} GPUs")
+        model = torch.nn.DataParallel(model)
+    else:
+        print("Using single GPU or CPU")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
 
@@ -104,7 +110,12 @@ def load_checkpoint(cfg: DictConfig, model, optimizer):
     if cfg.logging.preload == "latest":
         if model_file := latest_weights_file_path(cfg, prefix="decoder_pretrain_"):
             state = torch.load(model_file)
-            model.load_state_dict(state["model_state_dict"])
+            
+            if isinstance(model, torch.nn.DataParallel):
+                model.module.load_state_dict(state["model_state_dict"])
+            else:
+                model.load_state_dict(state["model_state_dict"])
+            
             optimizer.load_state_dict(state["optimizer_state_dict"])
             return state["epoch"] + 1, state["global_step"]
     return 0, 0
@@ -112,10 +123,16 @@ def load_checkpoint(cfg: DictConfig, model, optimizer):
 
 def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, prefix="decoder_pretrain_"):
     model_file = get_weights_file_path(cfg, epoch, prefix)
+    
+    if isinstance(model, torch.nn.DataParallel):
+        model_state_dict = model.module.state_dict()
+    else:
+        model_state_dict = model.state_dict()
+    
     torch.save({
         "epoch": epoch,
         "global_step": step,
-        "model_state_dict": model.state_dict(),
+        "model_state_dict": model_state_dict,
         "optimizer_state_dict": optimizer.state_dict()
     }, model_file)
 
