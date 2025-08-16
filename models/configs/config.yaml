@@ -17,7 +17,6 @@ training:
   validation_interval_steps: 10000
   validation_samples: 10000
   use_pretrained_decoder: false
-  use_data_parallel: true
 model:
   d_model: 512
   num_heads: 8

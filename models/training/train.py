@@ -53,12 +53,6 @@ def train_model(cfg: DictConfig):
         dropout=cfg.training.dropout,
         d_ff=cfg.model.d_ff
     )
-    
-    if getattr(cfg.training, 'use_data_parallel', False) and torch.cuda.device_count() > 1:
-        accelerator.print(f"Using DataParallel on {torch.cuda.device_count()} GPUs")
-        model = torch.nn.DataParallel(model)
-    else:
-        accelerator.print("Using single GPU or CPU")
 
     if cfg.training.use_pretrained_decoder and Path(cfg.data.decoder_weights).exists():
         accelerator.print(f"Loading pretrained decoder weights from {cfg.data.decoder_weights}...")
@@ -213,15 +207,7 @@ def load_checkpoint(cfg: DictConfig, model, optimizer, accelerator):
             try:
                 accelerator.print(f"Loading checkpoint from {model_file}...")
                 checkpoint = torch.load(model_file, map_location='cpu')
-                
-                model_state_dict = checkpoint["model_state_dict"]
-                unwrapped_model = accelerator.unwrap_model(model)
-                
-                if isinstance(unwrapped_model, torch.nn.DataParallel):
-                    unwrapped_model.module.load_state_dict(model_state_dict)
-                else:
-                    unwrapped_model.load_state_dict(model_state_dict)
-                
+                accelerator.unwrap_model(model).load_state_dict(checkpoint["model_state_dict"])
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
                 if "accelerator_state" in checkpoint:
@@ -242,16 +228,10 @@ def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, accelerator)
     if accelerator.is_local_main_process:
         accelerator.print(f"Saving checkpoint to {model_file}...")
 
-        unwrapped_model = accelerator.unwrap_model(model)
-        if isinstance(unwrapped_model, torch.nn.DataParallel):
-            model_state_dict = unwrapped_model.module.state_dict()
-        else:
-            model_state_dict = unwrapped_model.state_dict()
-
         accelerator.save({
             "epoch": epoch,
             "global_step": step,
-            "model_state_dict": model_state_dict,
+            "model_state_dict": accelerator.unwrap_model(model).state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "accelerator_state": accelerator.get_state_dict(model)
         }, model_file)
