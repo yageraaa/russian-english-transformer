@@ -10,6 +10,7 @@ from omegaconf import DictConfig
 from pathlib import Path
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from accelerate import Accelerator
+from accelerate.utils import DistributedDataParallelKwargs
 from models.data.dataset import BilingualTranslationDataset, load_hf_dataset
 from models.transformer.transformer import TransformerWithNewTechniques
 from tokenizer.tokenizer import Tokenizer
@@ -24,7 +25,8 @@ def train_model(cfg: DictConfig):
     accelerator = Accelerator(
         mixed_precision=getattr(cfg.training, 'mixed_precision', 'no'),
         gradient_accumulation_steps=getattr(cfg.training, 'gradient_accumulation_steps', 1),
-        log_with="mlflow"
+        log_with="mlflow",
+        kwargs_handlers=[DistributedDataParallelKwargs(find_unused_parameters=False)]
     )
     device = accelerator.device
 
@@ -82,6 +84,14 @@ def train_model(cfg: DictConfig):
     model, optimizer, train_ds, val_ds = accelerator.prepare(model, optimizer, train_ds, val_ds)
     epoch, global_step = load_checkpoint(cfg, model, optimizer, accelerator)
     accelerator.print(f"Starting from epoch {epoch}, global step {global_step}")
+    
+    accelerator.print(f"Model is distributed: {accelerator.num_processes > 1}")
+    accelerator.print(f"Number of processes: {accelerator.num_processes}")
+    accelerator.print(f"Process index: {accelerator.process_index}")
+    accelerator.print(f"Local process index: {accelerator.local_process_index}")
+    accelerator.print(f"Device: {accelerator.device}")
+    accelerator.print(f"Mixed precision: {accelerator.mixed_precision}")
+    accelerator.print(f"Gradient accumulation steps: {accelerator.gradient_accumulation_steps}")
 
     def signal_handler(sig, frame):
         accelerator.print("Interrupt detected, saving checkpoint...")
