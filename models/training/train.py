@@ -77,7 +77,15 @@ def train_model(cfg: DictConfig):
         accelerator.print("Interrupt detected, saving checkpoint...")
         save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
         accelerator.print(f"Checkpoint saved at {get_weights_file_path(cfg, epoch)}")
+        
+        accelerator.print("Cleaning up GPU memory...")
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            accelerator.print(f"GPU memory cleared. Current memory usage: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+        
         mlflow.end_run()
+        accelerator.print("Training stopped safely.")
         exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -153,6 +161,14 @@ def train_model(cfg: DictConfig):
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
     mlflow.end_run()
+    
+    accelerator.print("Training completed. Cleaning up GPU memory...")
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        accelerator.print(f"GPU memory cleared. Final memory usage: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+    
+    accelerator.print("Training finished successfully!")
 
 
 def load_pretrained_decoder_weights(model, weights_path, accelerator):

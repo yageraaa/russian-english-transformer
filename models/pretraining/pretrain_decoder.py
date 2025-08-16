@@ -11,6 +11,7 @@ from pathlib import Path
 from models.data.pretrain_decoder_dataset import EnglishLanguageModelDataset, load_english_dataset
 from pretrain_decoder_model import DecoderOnlyModel
 from tokenizer.tokenizer import Tokenizer
+import gc
 
 
 @hydra.main(config_path="../configs", config_name="config", version_base="1.2")
@@ -98,6 +99,14 @@ def pretrain_decoder(cfg: DictConfig):
         save_checkpoint(cfg, epoch, global_step, model, optimizer, prefix="decoder_pretrain_")
 
     mlflow.end_run()
+    
+    print("Pretraining completed. Cleaning up GPU memory...")
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        print(f"GPU memory cleared. Final memory usage: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+    
+    print("Pretraining finished successfully!")
 
 
 def load_checkpoint(cfg: DictConfig, model, optimizer):
