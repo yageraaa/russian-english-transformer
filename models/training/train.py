@@ -410,10 +410,10 @@ def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: in
     
     mlflow.log_text(translation_text, f"translations_epoch_{epoch}.txt")
     
+    # Логируем только числовые метрики для BLEU score
     for i, (src, ref, trans) in enumerate(translations):
-        mlflow.log_metric(f"example_{i}_source", src, step=epoch)
-        mlflow.log_metric(f"example_{i}_reference", ref, step=epoch)
-        mlflow.log_metric(f"example_{i}_translation", trans, step=epoch)
+        bleu_score = calculate_bleu(trans, ref)
+        mlflow.log_metric(f"example_{i}_bleu", bleu_score, step=epoch)
 
 
 def get_weights_file_path(cfg: DictConfig, epoch: int) -> str:

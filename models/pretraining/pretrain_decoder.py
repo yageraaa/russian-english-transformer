@@ -187,9 +187,10 @@ def log_generations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: int
     
     mlflow.log_text(generation_text, f"generations_epoch_{epoch}.txt")
     
+    # Логируем только количество сгенерированных токенов как метрику
     for i, (prompt, gen) in enumerate(generations):
-        mlflow.log_metric(f"generation_{i}_prompt", prompt, step=epoch)
-        mlflow.log_metric(f"generation_{i}_text", gen, step=epoch)
+        gen_length = len(gen.split())
+        mlflow.log_metric(f"generation_{i}_length", gen_length, step=epoch)
 
 
 def get_weights_file_path(cfg: DictConfig, epoch: int, prefix="decoder_pretrain_") -> str:
