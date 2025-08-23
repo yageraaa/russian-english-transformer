@@ -9,7 +9,7 @@ data:
   model_weights: ${data.model_dir}/transformer_00.pt
   log_dir: ${data.base_dir}/logs
 training:
-  batch_size: 8
+  batch_size: 16
   num_epochs: 1
   lr: 0.0001
   dropout: 0.1
@@ -21,7 +21,7 @@ training:
   gradient_accumulation_steps: 4
   #num_workers: 48
 model:
-  d_model: 128
+  d_model: 256
   num_heads: 2
   num_layers: 1
   d_ff: 512
