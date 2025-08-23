@@ -19,7 +19,7 @@ import gc
 import re
 
 
-@hydra.main(config_path="../configs", config_name="config", version_base="1.2")
+@hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
 def train_model(cfg: DictConfig):
     accelerator = Accelerator(
         mixed_precision=getattr(cfg.training, 'mixed_precision', 'no'),
@@ -80,6 +80,24 @@ def train_model(cfg: DictConfig):
     )
 
     model, optimizer, train_ds, val_ds = accelerator.prepare(model, optimizer, train_ds, val_ds)
+    
+    def safe_encode(*args, **kwargs):
+        return model.module.encode(*args, **kwargs) if hasattr(model, 'module') else model.encode(*args, **kwargs)
+    
+    def safe_decode(*args, **kwargs):
+        return model.module.decode(*args, **kwargs) if hasattr(model, 'module') else model.decode(*args, **kwargs)
+    
+    def safe_project(*args, **kwargs):
+        return model.module.project(*args, **kwargs) if hasattr(model, 'module') else model.project(*args, **kwargs)
+    
+    def safe_translate_batch(*args, **kwargs):
+        return model.module.translate_batch(*args, **kwargs) if hasattr(model, 'module') else model.translate_batch(*args, **kwargs)
+    
+    model.encode = safe_encode
+    model.decode = safe_decode
+    model.project = safe_project
+    model.translate_batch = safe_translate_batch
+    
     epoch, global_step = load_checkpoint(cfg, model, optimizer, accelerator)
     accelerator.print(f"Starting from epoch {epoch}, global step {global_step}")
 
