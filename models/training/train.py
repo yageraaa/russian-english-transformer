@@ -260,8 +260,10 @@ def create_datasets(cfg: DictConfig, tokenizer, dataset):
         split=cfg.dataset.validation_split)
 
     return (
-        DataLoader(train_dataset, batch_size=cfg.training.batch_size, shuffle=True, pin_memory=True),
-        DataLoader(val_dataset, batch_size=cfg.training.batch_size, pin_memory=True)
+        DataLoader(train_dataset, batch_size=cfg.training.batch_size, shuffle=True, pin_memory=True, 
+                  num_workers=getattr(cfg.training, 'num_workers', 0)),
+        DataLoader(val_dataset, batch_size=cfg.training.batch_size, pin_memory=True,
+                  num_workers=getattr(cfg.training, 'num_workers', 0))
     )
 
 
