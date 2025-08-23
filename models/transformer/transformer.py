@@ -14,8 +14,9 @@ class TransformerWithNewTechniques(nn.Module):
         super().__init__()
         self.src_embed = InputEmbeddings(d_model, src_vocab_size)
         self.tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
-        self.src_pos = PositionalEncoding(d_model, src_seq_len)
-        self.tgt_pos = PositionalEncoding(d_model, tgt_seq_len)
+        max_seq_len = max(src_seq_len, tgt_seq_len) * 2
+        self.src_pos = PositionalEncoding(d_model, max_seq_len)
+        self.tgt_pos = PositionalEncoding(d_model, max_seq_len)
         self.encoder = EncoderWithNewTechniques(d_model, num_layers, num_heads, d_ff, dropout)
         self.decoder = DecoderWithNewTechniques(d_model, num_layers, num_heads, d_ff, dropout)
         self.projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
@@ -24,7 +25,9 @@ class TransformerWithNewTechniques(nn.Module):
     def _init_weights(self):
         for p in self.parameters():
             if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
+                nn.init.kaiming_normal_(p, mode='fan_out', nonlinearity='relu')
+            else:
+                nn.init.zeros_(p)
 
     def encode(self, src, src_mask):
         if src_mask is not None and src_mask.dim() == 3:

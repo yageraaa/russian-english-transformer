@@ -10,15 +10,15 @@ data:
   log_dir: ${data.base_dir}/logs
 training:
   batch_size: 16
-  num_epochs: 1
+  num_epochs: 3
   lr: 0.0001
   dropout: 0.1
   seq_len: 64
-  validation_interval_steps: 50
-  validation_samples: 50
+  validation_interval_steps: 100
+  validation_samples: 100
   use_pretrained_decoder: false
   mixed_precision: fp16
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 2
   #num_workers: 48
 model:
   d_model: 256

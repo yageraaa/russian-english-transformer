@@ -20,13 +20,17 @@ class QKNorm(nn.Module):
         q = self.w_q(q).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
         k = self.w_k(k).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
         v = self.w_v(v).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        
         q_norm = q / (torch.norm(q, dim=-1, keepdim=True) + 1e-6)
         k_norm = k / (torch.norm(k, dim=-1, keepdim=True) + 1e-6)
-        scores = torch.matmul(q_norm, k_norm.transpose(-2, -1))
+        
+        scores = torch.matmul(q_norm, k_norm.transpose(-2, -1)) / math.sqrt(self.d_k)
 
         if mask is not None:
             if mask.dim() == 3:
-                mask = mask.unsqueeze(1)
+                mask = mask.unsqueeze(1).expand(-1, self.num_heads, -1, -1)
+            elif mask.dim() == 4 and mask.size(1) == 1:
+                mask = mask.expand(-1, self.num_heads, -1, -1)
             scores = scores.masked_fill(mask == 0, float('-inf'))
 
         attn = torch.softmax(scores, dim=-1)
