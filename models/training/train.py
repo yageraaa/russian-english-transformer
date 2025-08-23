@@ -340,6 +340,7 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
 
             translated = model.translate_batch(
                 inputs['encoder_input'],
+                max_len=cfg.training.seq_len,
                 start_token_id=tokenizer.en_token_to_id['<start>'],
                 end_token_id=tokenizer.en_token_to_id['<end>']
             )
@@ -410,6 +411,7 @@ def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: in
 
             output = model.translate_batch(
                 encoder_input,
+                max_len=cfg.training.seq_len,
                 start_token_id=tokenizer.en_token_to_id['<start>'],
                 end_token_id=tokenizer.en_token_to_id['<end>']
             )

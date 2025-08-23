@@ -13,7 +13,7 @@ training:
   num_epochs: 1
   lr: 0.0001
   dropout: 0.1
-  seq_len: 32
+  seq_len: 64
   validation_interval_steps: 50
   validation_samples: 50
   use_pretrained_decoder: false

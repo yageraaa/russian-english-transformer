@@ -56,6 +56,8 @@ class TransformerWithNewTechniques(nn.Module):
         tgt = torch.full((batch_size, 1), start_token_id, dtype=torch.long, device=device)
         finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
 
+        max_len = min(max_len, self.tgt_pos.encoding.size(1))
+
         for _ in range(max_len):
             tgt_mask = self.generate_square_subsequent_mask(tgt.size(1), device=device)
 
