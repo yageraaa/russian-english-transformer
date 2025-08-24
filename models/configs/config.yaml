@@ -9,22 +9,22 @@ data:
   model_weights: ${data.model_dir}/transformer_00.pt
   log_dir: ${data.base_dir}/logs
 training:
-  batch_size: 16
-  num_epochs: 1
+  batch_size: 128
+  num_epochs: 30
   lr: 0.0001
   dropout: 0.1
-  seq_len: 64
-  validation_interval_steps: 50
-  validation_samples: 50
+  seq_len: 128
+  validation_interval_steps: 10000
+  validation_samples: 10000
   use_pretrained_decoder: false
   mixed_precision: fp16
-  gradient_accumulation_steps: 4
-  #num_workers: 48
+  gradient_accumulation_steps: 2
+  num_workers: 48
 model:
-  d_model: 256
-  num_heads: 2
-  num_layers: 1
-  d_ff: 512
+  d_model: 512
+  num_heads: 8
+  num_layers: 6
+  d_ff: 2048
 language:
   src_lang: ru
   tgt_lang: en
