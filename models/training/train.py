@@ -74,17 +74,6 @@ def train_model(cfg: DictConfig):
         )
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
-    
-    total_steps = len(train_ds) * cfg.training.num_epochs
-    warmup_steps = total_steps // 10
-    
-    def lr_lambda(step):
-        if step < warmup_steps:
-            return float(step) / float(max(1, warmup_steps))
-        return max(0.0, float(total_steps - step) / float(max(1, total_steps - warmup_steps)))
-    
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-    
     loss_fn = nn.CrossEntropyLoss(
         ignore_index=tokenizer.en_token_to_id['<pad>'],
         label_smoothing=0.1
@@ -159,14 +148,12 @@ def train_model(cfg: DictConfig):
             accelerator.backward(loss)
             
             if accelerator.sync_gradients:
-                accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
-                scheduler.step()
                 optimizer.zero_grad()
 
             log_data = {
                 "train/loss": loss.item(),
-                "lr": scheduler.get_last_lr()[0],
+                "lr": optimizer.param_groups[0]['lr'],
                 "epoch": epoch,
                 "step": global_step
             }
@@ -260,10 +247,8 @@ def create_datasets(cfg: DictConfig, tokenizer, dataset):
         split=cfg.dataset.validation_split)
 
     return (
-        DataLoader(train_dataset, batch_size=cfg.training.batch_size, shuffle=True, pin_memory=True, 
-                  num_workers=getattr(cfg.training, 'num_workers', 0)),
-        DataLoader(val_dataset, batch_size=cfg.training.batch_size, pin_memory=True,
-                  num_workers=getattr(cfg.training, 'num_workers', 0))
+        DataLoader(train_dataset, batch_size=cfg.training.batch_size, shuffle=True, pin_memory=True),
+        DataLoader(val_dataset, batch_size=cfg.training.batch_size, pin_memory=True)
     )
 
 

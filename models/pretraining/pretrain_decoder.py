@@ -37,14 +37,12 @@ def pretrain_decoder(cfg: DictConfig):
     train_ds = DataLoader(
         EnglishLanguageModelDataset(
             train, tokenizer, tgt_lang=cfg.language.tgt_lang, seq_length=cfg.training.seq_len),
-        batch_size=cfg.training.batch_size, shuffle=True, pin_memory=True,
-        num_workers=getattr(cfg.training, 'num_workers', 0))
+        batch_size=cfg.training.batch_size, shuffle=True, pin_memory=True)
 
     val_ds = DataLoader(
         EnglishLanguageModelDataset(
             val, tokenizer, tgt_lang=cfg.language.tgt_lang, seq_length=cfg.training.seq_len),
-        batch_size=cfg.training.batch_size, pin_memory=True,
-        num_workers=getattr(cfg.training, 'num_workers', 0))
+        batch_size=cfg.training.batch_size, pin_memory=True)
 
     model = DecoderOnlyModel(
         vocab_size=len(tokenizer.en_token_to_id),
