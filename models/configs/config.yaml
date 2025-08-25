@@ -16,8 +16,8 @@ training:
   lr: 0.0001
   dropout: 0.1
   seq_len: 128
-  validation_interval_steps: 10000
-  validation_samples: 10000
+  validation_interval_steps: 100
+  validation_samples: 100
   use_pretrained_decoder: false
   mixed_precision: fp16
   gradient_accumulation_steps: 2
