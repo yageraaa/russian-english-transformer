@@ -17,8 +17,17 @@ from typing import Optional
 import signal
 import gc
 import re
-from nltk.tokenize import word_tokenize
-from nltk.translate.meteor_score import meteor_score
+try:
+    import nltk
+    nltk.download('punkt', quiet=True)
+    nltk.download('wordnet', quiet=True)
+    nltk.download('omw-1.4', quiet=True)
+    from nltk.translate.meteor_score import meteor_score
+    METEOR_AVAILABLE = True
+except Exception as e:
+    print(f"METEOR not available: {e}")
+    METEOR_AVAILABLE = False
+    meteor_score = None
 
 
 @hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
@@ -151,7 +160,6 @@ def train_model(cfg: DictConfig):
             accelerator.backward(loss)
 
             if accelerator.sync_gradients:
-                accelerator.clip_grad_norm_(model.parameters(), max_norm=cfg.training.gradient_clip_norm)
                 optimizer.step()
                 optimizer.zero_grad()
 
@@ -169,14 +177,6 @@ def train_model(cfg: DictConfig):
 
             global_step += 1
 
-            if global_step % cfg.training.checkpoint_interval_steps == 0:
-                save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
-                
-                if getattr(cfg.logging, 'log_examples_every_checkpoint', True):
-                    accelerator.print(f"\nLogging translation examples at step {global_step}...")
-                    log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator, global_step)
-                    log_translation_progress_summary(model, tokenizer, device, cfg, epoch, accelerator, global_step)
-
             if global_step % cfg.training.validation_interval_steps == 0:
                 accelerator.print(f"\nRunning validation at step {global_step}...")
                 val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg, accelerator)
@@ -186,7 +186,7 @@ def train_model(cfg: DictConfig):
                                        step=global_step)
 
                     if getattr(cfg.logging, 'log_examples', True):
-                        log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator, global_step)
+                        log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator)
 
                 save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
                 model.train()
@@ -201,7 +201,7 @@ def train_model(cfg: DictConfig):
                                step=global_step)
 
             if getattr(cfg.logging, 'log_examples', True):
-                log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator, global_step)
+                log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator)
 
         save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
         gc.collect()
@@ -432,6 +432,9 @@ def calculate_bleu(prediction: str, reference: str) -> float:
 
 
 def calculate_meteor(prediction: str, reference: str) -> float:
+    if not METEOR_AVAILABLE:
+        return 0.0
+        
     def normalize_text(text):
         text = text.lower()
         text = re.sub(r'\s+', ' ', text)
@@ -440,18 +443,18 @@ def calculate_meteor(prediction: str, reference: str) -> float:
     pred_normalized = normalize_text(prediction)
     ref_normalized = normalize_text(reference)
 
-    pred_tokens = word_tokenize(pred_normalized)
-    ref_tokens = word_tokenize(ref_normalized)
-
-    if not pred_tokens:
-        return 0.0
-    
-    if not ref_tokens:
+    if not pred_normalized or not ref_normalized:
         return 0.0
 
     try:
+        pred_tokens = pred_normalized.split()
+        ref_tokens = ref_normalized.split()
+        
+        if not pred_tokens or not ref_tokens:
+            return 0.0
+            
         return meteor_score([ref_tokens], pred_tokens)
-    except:
+    except Exception as e:
         return 0.0
 
 
@@ -468,53 +471,6 @@ def cleanup_old_checkpoints(cfg: DictConfig, keep_last_n: int = 5):
             old_checkpoint.unlink()
         except Exception as e:
             print(f"Failed to delete old checkpoint {old_checkpoint}: {e}")
-
-
-def log_translation_progress_summary(model, tokenizer, device, cfg: DictConfig, epoch: int, accelerator, step: int):
-    summary_examples = [
-        ("Привет, как дела?", "Hello, how are you?"),
-        ("Сегодня хорошая погода.", "The weather is nice today."),
-        ("Я люблю читать книги.", "I love reading books."),
-        ("Машина стоит на улице.", "The car is parked on the street."),
-        ("Мы идем в магазин.", "We are going to the store.")
-    ]
-    
-    model.eval()
-    progress_data = {}
-    
-    with torch.no_grad():
-        for i, (src, ref) in enumerate(summary_examples):
-            input_tokens = tokenizer.encode_text(
-                src,
-                getattr(tokenizer, f"{cfg.language.src_lang}_token_to_id"),
-                getattr(tokenizer, f"{cfg.language.src_lang}_vocab")
-            )
-            encoder_input = torch.tensor([input_tokens], dtype=torch.int64).to(device)
-
-            output = model.translate_batch(
-                encoder_input,
-                max_len=cfg.training.seq_len,
-                start_token_id=tokenizer.en_token_to_id['<start>'],
-                end_token_id=tokenizer.en_token_to_id['<end>']
-            )
-
-            translation = tokenizer.decode_ids(
-                output[0].cpu().numpy(),
-                getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token")
-            )
-            
-            bleu_score = calculate_bleu(translation, ref)
-            meteor_score_val = calculate_meteor(translation, ref)
-            progress_data[f"summary_example_{i+1}_bleu"] = bleu_score
-            progress_data[f"summary_example_{i+1}_meteor"] = meteor_score_val
-            progress_data[f"summary_example_{i+1}_translation"] = translation
-    
-    if accelerator.is_local_main_process:
-        for metric_name, value in progress_data.items():
-            if isinstance(value, float):
-                mlflow.log_metric(metric_name, value, step=step)
-            else:
-                mlflow.log_text(f"{metric_name}: {value}", f"{metric_name}_step_{step:06d}.txt")
 
 
 def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: int, accelerator, step: int = None):
