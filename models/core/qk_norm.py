@@ -22,7 +22,7 @@ class QKNorm(nn.Module):
         v = self.w_v(v).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
         q_norm = q / (torch.norm(q, dim=-1, keepdim=True) + 1e-6)
         k_norm = k / (torch.norm(k, dim=-1, keepdim=True) + 1e-6)
-        scores = torch.matmul(q_norm, k_norm.transpose(-2, -1))
+        scores = torch.matmul(q_norm, k_norm.transpose(-2, -1)) / math.sqrt(self.d_k)
 
         if mask is not None:
             if mask.dim() == 3:
