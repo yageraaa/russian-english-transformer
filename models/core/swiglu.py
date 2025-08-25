@@ -12,11 +12,11 @@ class SwiGLU(nn.Module):
         self.w3 = nn.Linear(d_ff, d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        gate = F.silu(self.w1(x))
-        up = self.w2(x)
-        hidden = gate * up
-        hidden = self.dropout(hidden)
-        return self.w3(hidden)
+        swish = self.w1(x) * torch.sigmoid(self.w1(x))
+        gate = self.w2(x)
+        x = swish * gate
+        x = self.dropout(x)
+        return self.w3(x)
 
 
 if __name__ == "__main__":

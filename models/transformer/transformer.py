@@ -25,6 +25,12 @@ class TransformerWithNewTechniques(nn.Module):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
+        
+        nn.init.normal_(self.src_embed.embedding.weight, mean=0, std=0.02)
+        nn.init.normal_(self.tgt_embed.embedding.weight, mean=0, std=0.02)
+        
+        nn.init.normal_(self.projection_layer.projection.weight, mean=0, std=0.02)
+        nn.init.zeros_(self.projection_layer.projection.bias)
 
     def encode(self, src, src_mask):
         if src_mask is not None and src_mask.dim() == 3:

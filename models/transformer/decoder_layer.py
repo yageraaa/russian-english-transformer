@@ -16,6 +16,11 @@ class DecoderBlockWithNewTechniques(nn.Module):
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor,
                 src_mask: torch.Tensor, tgt_mask: torch.Tensor):
+        if src_mask is not None and src_mask.dim() == 3:
+            src_mask = src_mask.unsqueeze(1)
+        if tgt_mask is not None and tgt_mask.dim() == 3:
+            tgt_mask = tgt_mask.unsqueeze(1)
+            
         x = self.residuals[0](x, lambda x: self.self_attention(x, x, x, tgt_mask))
         x = self.residuals[1](x, lambda x: self.cross_attention(x, encoder_output, encoder_output, src_mask))
         x = self.residuals[2](x, self.feed_forward)

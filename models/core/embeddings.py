@@ -2,19 +2,18 @@ import torch
 import torch.nn as nn
 
 class InputEmbeddings(nn.Module):
-    def __init__(self, d_model: int, vocab_size: int):
+    def __init__(self, d_model: int, vocab_size: int):  # Ð˜ÑÐ¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¾
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.d_model = d_model
-        self.scale = d_model ** 0.5
 
     def forward(self, x):
-        return self.embedding(x) * self.scale
+        return self.embedding(x) * torch.sqrt(torch.tensor(self.d_model, dtype=torch.float32))
 
 if __name__ == "__main__":
     vocab_size = 256
     d_model = 512
-    embeddings = InputEmbeddings(d_model, vocab_size)
+    embeddings = InputEmbeddings(vocab_size, d_model)
     batch_size = 5
     seq_len = 10
     input_ids = torch.randint(0, vocab_size, (batch_size, seq_len))

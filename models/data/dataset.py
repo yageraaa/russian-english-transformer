@@ -54,8 +54,8 @@ class BilingualTranslationDataset(Dataset):
         encoder_input = self._add_special_tokens_and_pad(src_ids, add_eos=True)
         decoder_input = self._add_special_tokens_and_pad(tgt_ids, add_eos=False)
         label = self._add_special_tokens_and_pad(tgt_ids, add_eos=True, add_sos=False)
-        encoder_mask = (encoder_input != self.pad_token).int()  # [seq_len]
-        decoder_mask = (decoder_input != self.pad_token).int().unsqueeze(0) & self.causal_mask(decoder_input.size(0))  # [1, seq_len] & [seq_len, seq_len] -> [seq_len, seq_len]
+        encoder_mask = (encoder_input != self.pad_token).unsqueeze(0).int()
+        decoder_mask = (decoder_input != self.pad_token).unsqueeze(0).int() & self.causal_mask(decoder_input.size(0))
 
         return {
             "encoder_input": encoder_input,
