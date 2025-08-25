@@ -29,8 +29,8 @@ class TransformerWithNewTechniques(nn.Module):
         nn.init.normal_(self.src_embed.embedding.weight, mean=0, std=0.02)
         nn.init.normal_(self.tgt_embed.embedding.weight, mean=0, std=0.02)
         
-        nn.init.normal_(self.projection_layer.projection.weight, mean=0, std=0.02)
-        nn.init.zeros_(self.projection_layer.projection.bias)
+        nn.init.normal_(self.projection_layer.proj.weight, mean=0, std=0.02)
+        nn.init.zeros_(self.projection_layer.proj.bias)
 
     def encode(self, src, src_mask):
         if src_mask is not None and src_mask.dim() == 3:
