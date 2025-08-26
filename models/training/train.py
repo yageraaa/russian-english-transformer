@@ -17,17 +17,7 @@ from typing import Optional
 import signal
 import gc
 import re
-try:
-    import nltk
-    nltk.download('punkt', quiet=True)
-    nltk.download('wordnet', quiet=True)
-    nltk.download('omw-1.4', quiet=True)
-    from nltk.translate.meteor_score import meteor_score
-    METEOR_AVAILABLE = True
-except Exception as e:
-    print(f"METEOR not available: {e}")
-    METEOR_AVAILABLE = False
-    meteor_score = None
+
 
 
 @hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
@@ -340,7 +330,6 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
     model.eval()
     total_loss = 0
     total_bleu = 0
-    total_meteor = 0
     total_samples = 0
     max_samples = cfg.training.validation_samples
 
@@ -390,22 +379,18 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
                 )
                 ref = batch['tgt_text'][i]
                 bleu_score = calculate_bleu(pred, ref)
-                meteor_score_val = calculate_meteor(pred, ref)
                 total_bleu += bleu_score
-                total_meteor += meteor_score_val
                 total_samples += 1
 
             val_iterator.set_postfix(loss=f"{loss:.4f}", samples=total_samples)
 
     avg_loss = total_loss / (batch_idx + 1) if batch_idx >= 0 else 0
     avg_bleu = total_bleu / total_samples if total_samples > 0 else 0
-    avg_meteor = total_meteor / total_samples if total_samples > 0 else 0
 
-    accelerator.print(f"Validation results: Loss = {avg_loss:.4f}, BLEU = {avg_bleu:.4f}, METEOR = {avg_meteor:.4f}, Samples = {total_samples}")
+    accelerator.print(f"Validation results: Loss = {avg_loss:.4f}, BLEU = {avg_bleu:.4f}, Samples = {total_samples}")
 
     metrics = {
         "val/bleu": avg_bleu,
-        "val/meteor": avg_meteor,
         "val/samples": total_samples
     }
 
@@ -431,31 +416,7 @@ def calculate_bleu(prediction: str, reference: str) -> float:
     return sentence_bleu([ref_tokens], pred_tokens, smoothing_function=SmoothingFunction().method1)
 
 
-def calculate_meteor(prediction: str, reference: str) -> float:
-    if not METEOR_AVAILABLE:
-        return 0.0
-        
-    def normalize_text(text):
-        text = text.lower()
-        text = re.sub(r'\s+', ' ', text)
-        return text.strip()
 
-    pred_normalized = normalize_text(prediction)
-    ref_normalized = normalize_text(reference)
-
-    if not pred_normalized or not ref_normalized:
-        return 0.0
-
-    try:
-        pred_tokens = pred_normalized.split()
-        ref_tokens = ref_normalized.split()
-        
-        if not pred_tokens or not ref_tokens:
-            return 0.0
-            
-        return meteor_score([ref_tokens], pred_tokens)
-    except Exception as e:
-        return 0.0
 
 
 def cleanup_old_checkpoints(cfg: DictConfig, keep_last_n: int = 5):
@@ -523,18 +484,14 @@ def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: in
     translation_text = f"Epoch {epoch}{step_info} Translations:\n"
     for i, (src, ref, trans) in enumerate(translations):
         bleu_score = calculate_bleu(trans, ref)
-        meteor_score_val = calculate_meteor(trans, ref)
-        translation_text += f"Example {i+1}:\nSource: {src}\nReference: {ref}\nTranslation: {trans}\nBLEU: {bleu_score:.4f}\nMETEOR: {meteor_score_val:.4f}\n\n"
+        translation_text += f"Example {i+1}:\nSource: {src}\nReference: {ref}\nTranslation: {trans}\nBLEU: {bleu_score:.4f}\n\n"
 
     mlflow.log_text(translation_text, f"translations_epoch_{epoch}{step_info}.txt")
 
     for i, (src, ref, trans) in enumerate(translations):
         bleu_score = calculate_bleu(trans, ref)
-        meteor_score_val = calculate_meteor(trans, ref)
         mlflow.log_metric(f"example_{i+1}_bleu", bleu_score, step=step if step else epoch)
-        mlflow.log_metric(f"example_{i+1}_meteor", meteor_score_val, step=step if step else epoch)
         mlflow.log_metric(f"example_{i+1}_bleu_epoch", bleu_score, step=epoch)
-        mlflow.log_metric(f"example_{i+1}_meteor_epoch", meteor_score_val, step=epoch)
 
 
 def get_weights_file_path(cfg: DictConfig, epoch: int) -> str:
