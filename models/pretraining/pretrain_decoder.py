@@ -114,7 +114,7 @@ def pretrain_decoder(cfg: DictConfig):
 def load_checkpoint(cfg: DictConfig, model, optimizer):
     if cfg.logging.preload == "latest":
         if model_file := latest_weights_file_path(cfg, prefix="decoder_pretrain_"):
-            state = torch.load(model_file)
+            state = torch.load(model_file, weights_only=False)
             model.load_state_dict(state["model_state_dict"])
             optimizer.load_state_dict(state["optimizer_state_dict"])
             return state["epoch"] + 1, state["global_step"]

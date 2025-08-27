@@ -272,7 +272,7 @@ def load_checkpoint(cfg: DictConfig, model, optimizer, accelerator):
         if model_file := latest_weights_file_path(cfg):
             try:
                 accelerator.print(f"Loading checkpoint from {model_file}...")
-                checkpoint = torch.load(model_file, map_location='cpu')
+                checkpoint = torch.load(model_file, map_location='cpu', weights_only=False)
                 accelerator.unwrap_model(model).load_state_dict(checkpoint["model_state_dict"])
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
