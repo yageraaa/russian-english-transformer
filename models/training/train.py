@@ -276,8 +276,15 @@ def load_checkpoint(cfg: DictConfig, model, optimizer, accelerator):
                 accelerator.unwrap_model(model).load_state_dict(checkpoint["model_state_dict"])
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
+                # Try to load accelerator state if available and supported
                 if "accelerator_state" in checkpoint:
-                    accelerator.load_state_dict(checkpoint["accelerator_state"])
+                    try:
+                        # Use the correct method to load accelerator state
+                        accelerator.load_state(checkpoint["accelerator_state"])
+                    except AttributeError:
+                        accelerator.print("Warning: Accelerator state loading not supported, continuing without it")
+                    except Exception as e:
+                        accelerator.print(f"Warning: Failed to load accelerator state: {e}")
 
                 accelerator.print(f"Checkpoint loaded successfully")
                 return checkpoint["epoch"] + 1, checkpoint["global_step"]
@@ -297,9 +304,14 @@ def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, accelerator)
         "global_step": step,
         "model_state_dict": accelerator.unwrap_model(model).state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
-        "accelerator_state": accelerator.get_state_dict(model),
         "config": cfg
     }
+    
+    # Try to save accelerator state if supported
+    try:
+        checkpoint_data["accelerator_state"] = accelerator.get_state_dict(model)
+    except Exception as e:
+        accelerator.print(f"Warning: Could not save accelerator state: {e}")
     
     if accelerator.is_local_main_process:
         accelerator.print(f"Saving checkpoint to {model_dir}...")
