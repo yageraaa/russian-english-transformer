@@ -13,20 +13,20 @@ training:
   num_epochs: 30
   lr: 0.0001
   dropout: 0.1
-  seq_len: 128
+  seq_len: 100
   validation_interval_steps: 10000
   validation_samples: 10000
   use_pretrained_decoder: false
   mixed_precision: fp16
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 1
   gradient_clip_norm: 1.0
   checkpoint_interval_steps: 10000
   num_workers: 48
 model:
-  d_model: 512
-  num_heads: 8
-  num_layers: 6
-  d_ff: 2048
+  d_model: 384
+  num_heads: 6
+  num_layers: 4
+  d_ff: 1536
 language:
   src_lang: ru
   tgt_lang: en
