@@ -17,7 +17,7 @@ training:
   validation_interval_steps: 10000
   validation_samples: 10000
   use_pretrained_decoder: false
-  mixed_precision: fp16
+  mixed_precision: bf16
   gradient_accumulation_steps: 1
   gradient_clip_norm: 1.0
   checkpoint_interval_steps: 10000
