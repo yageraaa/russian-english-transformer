@@ -17,6 +17,8 @@ from typing import Optional
 import signal
 import gc
 import re
+import random
+import numpy as np
 
 
 
@@ -159,6 +161,7 @@ def train_model(cfg: DictConfig):
                 accelerator.backward(loss)
 
                 if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), cfg.training.gradient_clip_norm)
                     optimizer.step()
                     optimizer.zero_grad()
 
@@ -179,6 +182,9 @@ def train_model(cfg: DictConfig):
                 if global_step % cfg.training.validation_interval_steps == 0:
                     accelerator.print(f"\nRunning validation at step {global_step}...")
                     try:
+                        accelerator.wait_for_everyone()
+                        if torch.cuda.is_available():
+                            torch.cuda.synchronize()
                         val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg, accelerator)
 
                         if accelerator.is_local_main_process:
@@ -214,6 +220,9 @@ def train_model(cfg: DictConfig):
 
         accelerator.print(f"\nRunning end-of-epoch validation...")
         try:
+            accelerator.wait_for_everyone()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg, accelerator)
 
             if accelerator.is_local_main_process:
