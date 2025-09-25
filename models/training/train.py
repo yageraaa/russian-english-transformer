@@ -80,11 +80,11 @@ def train_model(cfg: DictConfig):
         label_smoothing=0.1
     )
 
-    scaler = torch.cuda.amp.GradScaler(enabled=False)
+    scaler = torch.amp.GradScaler('cuda', enabled=False)
     if cfg.training.mixed_precision == 'bf16':
         accelerator.print("Using bf16 mixed precision training")
     elif cfg.training.mixed_precision == 'fp16':
-        scaler = torch.cuda.amp.GradScaler(enabled=True)
+        scaler = torch.amp.GradScaler('cuda', enabled=True)
         accelerator.print("Using fp16 mixed precision training")
 
     model, optimizer, train_ds, val_ds = accelerator.prepare(model, optimizer, train_ds, val_ds)
@@ -149,7 +149,7 @@ def train_model(cfg: DictConfig):
             try:
                 inputs = {k: v for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
 
-                with torch.cuda.amp.autocast(dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
+                with torch.amp.autocast('cuda', dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
                     encoder_output = model.encode(inputs['encoder_input'], inputs['encoder_mask'])
                     decoder_output = model.decode(encoder_output, inputs['encoder_mask'], inputs['decoder_input'],
                                                   inputs['decoder_mask'])
@@ -404,7 +404,7 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
 
                 inputs = {k: v for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
 
-                with torch.cuda.amp.autocast(dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
+                with torch.amp.autocast('cuda', dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
                     encoder_output = model.encode(inputs['encoder_input'], inputs['encoder_mask'])
                     decoder_output = model.decode(
                         encoder_output,
@@ -529,7 +529,7 @@ def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: in
                     )
                     encoder_input = torch.tensor([input_tokens], dtype=torch.int64).to(device)
 
-                    with torch.cuda.amp.autocast(dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
+                    with torch.amp.autocast('cuda', dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
                         output = model.translate_batch(
                             encoder_input,
                             max_len=cfg.training.seq_len,
