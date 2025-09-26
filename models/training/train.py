@@ -88,7 +88,7 @@ def train_model(cfg: DictConfig):
         scaler = torch.amp.GradScaler('cuda', enabled=True)
         accelerator.print("Using fp16 mixed precision training")
 
-    model, optimizer = accelerator.prepare(model, optimizer)
+    model, optimizer, train_ds, val_ds = accelerator.prepare(model, optimizer, train_ds, val_ds)
 
     def safe_encode(*args, **kwargs):
         return model.module.encode(*args, **kwargs) if hasattr(model, 'module') else model.encode(*args, **kwargs)
@@ -149,13 +149,7 @@ def train_model(cfg: DictConfig):
 
         for batch_idx, batch in batch_iterator:
             try:
-                inputs = {}
-                for k, v in batch.items():
-                    if k not in ['src_text', 'tgt_text']:
-                        if hasattr(v, 'to'):
-                            inputs[k] = v.to(device)
-                        else:
-                            inputs[k] = v
+                inputs = {k: v for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
 
                 with torch.amp.autocast('cuda',
                                         dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
@@ -432,13 +426,7 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
                 if total_samples >= max_samples:
                     break
 
-                inputs = {}
-                for k, v in batch.items():
-                    if k not in ['src_text', 'tgt_text']:
-                        if hasattr(v, 'to'):
-                            inputs[k] = v.to(device)
-                        else:
-                            inputs[k] = v
+                inputs = {k: v for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
 
                 with torch.amp.autocast('cuda',
                                         dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
