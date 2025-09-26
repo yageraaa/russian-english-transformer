@@ -21,7 +21,6 @@ import random
 import numpy as np
 
 
-
 @hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
 def train_model(cfg: DictConfig):
     accelerator = Accelerator(
@@ -89,7 +88,7 @@ def train_model(cfg: DictConfig):
         scaler = torch.amp.GradScaler('cuda', enabled=True)
         accelerator.print("Using fp16 mixed precision training")
 
-    model, optimizer, train_ds, val_ds = accelerator.prepare(model, optimizer, train_ds, val_ds)
+    model, optimizer = accelerator.prepare(model, optimizer)
 
     def safe_encode(*args, **kwargs):
         return model.module.encode(*args, **kwargs) if hasattr(model, 'module') else model.encode(*args, **kwargs)
@@ -151,7 +150,8 @@ def train_model(cfg: DictConfig):
             try:
                 inputs = {k: v for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
 
-                with torch.amp.autocast('cuda', dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
+                with torch.amp.autocast('cuda',
+                                        dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
                     encoder_output = model.encode(inputs['encoder_input'], inputs['encoder_mask'])
                     decoder_output = model.decode(encoder_output, inputs['encoder_mask'], inputs['decoder_input'],
                                                   inputs['decoder_mask'])
@@ -185,11 +185,13 @@ def train_model(cfg: DictConfig):
                         accelerator.wait_for_everyone()
                         if torch.cuda.is_available():
                             torch.cuda.synchronize()
-                        val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg, accelerator)
+                        val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg,
+                                                               accelerator)
 
                         if accelerator.is_local_main_process:
-                            mlflow.log_metrics({"val/loss": val_loss, "epoch": epoch, "step": global_step, **val_metrics},
-                                               step=global_step)
+                            mlflow.log_metrics(
+                                {"val/loss": val_loss, "epoch": epoch, "step": global_step, **val_metrics},
+                                step=global_step)
 
                             if getattr(cfg.logging, 'log_examples', True):
                                 log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator)
@@ -198,7 +200,7 @@ def train_model(cfg: DictConfig):
                         model.train()
                         gc.collect()
                         torch.cuda.empty_cache() if torch.cuda.is_available() else None
-                        
+
                     except Exception as e:
                         accelerator.print(f"Error during validation at step {global_step}: {e}")
                         accelerator.print("Skipping validation and continuing training...")
@@ -206,7 +208,7 @@ def train_model(cfg: DictConfig):
                             save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
                         except Exception as checkpoint_error:
                             accelerator.print(f"Error saving checkpoint: {checkpoint_error}")
-                        
+
                         model.train()
                         gc.collect()
                         torch.cuda.empty_cache() if torch.cuda.is_available() else None
@@ -235,7 +237,7 @@ def train_model(cfg: DictConfig):
             save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
             gc.collect()
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
-            
+
         except Exception as e:
             accelerator.print(f"Error during end-of-epoch validation: {e}")
             accelerator.print("Skipping validation but saving checkpoint...")
@@ -243,7 +245,7 @@ def train_model(cfg: DictConfig):
                 save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
             except Exception as checkpoint_error:
                 accelerator.print(f"Error saving checkpoint: {checkpoint_error}")
-            
+
             gc.collect()
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
@@ -286,7 +288,7 @@ def load_pretrained_decoder_weights(model, weights_path, accelerator):
             return
 
         model.decoder.load_state_dict(decoder_state, strict=False)
-        accelerator.print(f"[âœ“] Decoder weights loaded ({len(decoder_state)} keys)")
+        accelerator.print(f"[✓] Decoder weights loaded ({len(decoder_state)} keys)")
 
     except Exception as e:
         accelerator.print(f"[X] Failed to load decoder weights: {e}")
@@ -345,9 +347,11 @@ def load_checkpoint(cfg: DictConfig, model, optimizer, accelerator):
 
 def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, accelerator):
     try:
+        accelerator.wait_for_everyone()
+
         model_dir = Path(cfg.data.model_dir)
         model_dir.mkdir(parents=True, exist_ok=True)
-        
+
         checkpoint_data = {
             "epoch": epoch,
             "global_step": step,
@@ -355,26 +359,26 @@ def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, accelerator)
             "optimizer_state_dict": optimizer.state_dict(),
             "config": cfg
         }
-        
+
         try:
             checkpoint_data["accelerator_state"] = accelerator.get_state_dict(model)
         except Exception as e:
             accelerator.print(f"Warning: Could not save accelerator state: {e}")
-        
+
         if accelerator.is_local_main_process:
             accelerator.print(f"Saving checkpoint to {model_dir}...")
-            
+
             checkpoint_path = model_dir / f"{cfg.logging.model_basename}epoch_{epoch:02d}_step_{step:06d}.pt"
             accelerator.save(checkpoint_data, str(checkpoint_path))
-            
+
             latest_path = model_dir / f"{cfg.logging.model_basename}latest.pt"
             accelerator.save(checkpoint_data, str(latest_path))
-            
+
             accelerator.print(f"Checkpoint saved successfully: {checkpoint_path}")
             accelerator.print(f"Latest checkpoint: {latest_path}")
-            
+
             cleanup_old_checkpoints(cfg, keep_last_n=5)
-            
+
     except Exception as e:
         accelerator.print(f"Error saving checkpoint: {e}")
         accelerator.print("Checkpoint save failed, but training will continue...")
@@ -391,7 +395,9 @@ def decode_until_end(ids, id_to_token, end_token="<end>"):
 
 
 def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerator):
+    accelerator.wait_for_everyone()
     model.eval()
+
     total_loss = 0
     total_bleu = 0
     total_samples = 0
@@ -413,7 +419,8 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
 
                 inputs = {k: v for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
 
-                with torch.amp.autocast('cuda', dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
+                with torch.amp.autocast('cuda',
+                                        dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
                     encoder_output = model.encode(inputs['encoder_input'], inputs['encoder_mask'])
                     decoder_output = model.decode(
                         encoder_output,
@@ -449,7 +456,7 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
                     total_samples += 1
 
                 val_iterator.set_postfix(loss=f"{loss:.4f}", samples=total_samples)
-                
+
             except Exception as e:
                 accelerator.print(f"Error in validation batch {batch_idx}: {e}")
                 accelerator.print("Skipping this validation batch...")
@@ -487,17 +494,14 @@ def calculate_bleu(prediction: str, reference: str) -> float:
     return sentence_bleu([ref_tokens], pred_tokens, smoothing_function=SmoothingFunction().method1)
 
 
-
-
-
 def cleanup_old_checkpoints(cfg: DictConfig, keep_last_n: int = 5):
     model_dir = Path(cfg.data.model_dir)
     if not model_dir.exists():
         return
-    
+
     checkpoint_files = list(model_dir.glob(f"{cfg.logging.model_basename}epoch_*_step_*.pt"))
     checkpoint_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-    
+
     for old_checkpoint in checkpoint_files[keep_last_n:]:
         try:
             old_checkpoint.unlink()
@@ -538,7 +542,8 @@ def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: in
                     )
                     encoder_input = torch.tensor([input_tokens], dtype=torch.int64).to(device)
 
-                    with torch.amp.autocast('cuda', dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
+                    with torch.amp.autocast('cuda',
+                                            dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
                         output = model.translate_batch(
                             encoder_input,
                             max_len=cfg.training.seq_len,
@@ -551,9 +556,10 @@ def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: in
                         getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token")
                     )
 
-                    accelerator.print(f"Epoch {epoch} Step {step} - Source: {src}, Reference: {ref}, Translation: {translation}")
+                    accelerator.print(
+                        f"Epoch {epoch} Step {step} - Source: {src}, Reference: {ref}, Translation: {translation}")
                     translations.append([src, ref, translation])
-                    
+
                 except Exception as e:
                     accelerator.print(f"Error translating example '{src}': {e}")
                     translations.append([src, ref, "Translation failed"])
@@ -562,15 +568,15 @@ def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: in
         translation_text = f"Epoch {epoch}{step_info} Translations:\n"
         for i, (src, ref, trans) in enumerate(translations):
             bleu_score = calculate_bleu(trans, ref)
-            translation_text += f"Example {i+1}:\nSource: {src}\nReference: {ref}\nTranslation: {trans}\nBLEU: {bleu_score:.4f}\n\n"
+            translation_text += f"Example {i + 1}:\nSource: {src}\nReference: {ref}\nTranslation: {trans}\nBLEU: {bleu_score:.4f}\n\n"
 
         mlflow.log_text(translation_text, f"translations_epoch_{epoch}{step_info}.txt")
 
         for i, (src, ref, trans) in enumerate(translations):
             bleu_score = calculate_bleu(trans, ref)
-            mlflow.log_metric(f"example_{i+1}_bleu", bleu_score, step=step if step else epoch)
-            mlflow.log_metric(f"example_{i+1}_bleu_epoch", bleu_score, step=epoch)
-            
+            mlflow.log_metric(f"example_{i + 1}_bleu", bleu_score, step=step if step else epoch)
+            mlflow.log_metric(f"example_{i + 1}_bleu_epoch", bleu_score, step=epoch)
+
     except Exception as e:
         accelerator.print(f"Error in log_translations_mlflow: {e}")
         accelerator.print("Skipping translation logging...")
