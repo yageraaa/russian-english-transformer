@@ -113,6 +113,7 @@ def train_model(cfg: DictConfig):
 
     def signal_handler(sig, frame):
         accelerator.print("Interrupt detected, saving checkpoint...")
+        accelerator.wait_for_everyone()
         save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
         accelerator.print(f"Checkpoint saved at {get_weights_file_path(cfg, epoch)}")
 
@@ -148,7 +149,13 @@ def train_model(cfg: DictConfig):
 
         for batch_idx, batch in batch_iterator:
             try:
-                inputs = {k: v for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
+                inputs = {}
+                for k, v in batch.items():
+                    if k not in ['src_text', 'tgt_text']:
+                        if hasattr(v, 'to'):
+                            inputs[k] = v.to(device)
+                        else:
+                            inputs[k] = v
 
                 with torch.amp.autocast('cuda',
                                         dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
@@ -161,6 +168,7 @@ def train_model(cfg: DictConfig):
                 accelerator.backward(loss)
 
                 if accelerator.sync_gradients:
+                    accelerator.wait_for_everyone()
                     accelerator.clip_grad_norm_(model.parameters(), cfg.training.gradient_clip_norm)
                     optimizer.step()
                     optimizer.zero_grad()
@@ -196,6 +204,7 @@ def train_model(cfg: DictConfig):
                             if getattr(cfg.logging, 'log_examples', True):
                                 log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator)
 
+                        accelerator.wait_for_everyone()
                         save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
                         model.train()
                         gc.collect()
@@ -205,6 +214,7 @@ def train_model(cfg: DictConfig):
                         accelerator.print(f"Error during validation at step {global_step}: {e}")
                         accelerator.print("Skipping validation and continuing training...")
                         try:
+                            accelerator.wait_for_everyone()
                             save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
                         except Exception as checkpoint_error:
                             accelerator.print(f"Error saving checkpoint: {checkpoint_error}")
@@ -234,6 +244,7 @@ def train_model(cfg: DictConfig):
                 if getattr(cfg.logging, 'log_examples', True):
                     log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator)
 
+            accelerator.wait_for_everyone()
             save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
             gc.collect()
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
@@ -242,6 +253,7 @@ def train_model(cfg: DictConfig):
             accelerator.print(f"Error during end-of-epoch validation: {e}")
             accelerator.print("Skipping validation but saving checkpoint...")
             try:
+                accelerator.wait_for_everyone()
                 save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
             except Exception as checkpoint_error:
                 accelerator.print(f"Error saving checkpoint: {checkpoint_error}")
@@ -347,10 +359,14 @@ def load_checkpoint(cfg: DictConfig, model, optimizer, accelerator):
 
 def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, accelerator):
     try:
-        accelerator.wait_for_everyone()
+        if not accelerator.is_local_main_process:
+            accelerator.wait_for_everyone()
+            return
 
         model_dir = Path(cfg.data.model_dir)
         model_dir.mkdir(parents=True, exist_ok=True)
+
+        accelerator.print(f"Saving checkpoint to {model_dir}...")
 
         checkpoint_data = {
             "epoch": epoch,
@@ -365,19 +381,18 @@ def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, accelerator)
         except Exception as e:
             accelerator.print(f"Warning: Could not save accelerator state: {e}")
 
-        if accelerator.is_local_main_process:
-            accelerator.print(f"Saving checkpoint to {model_dir}...")
+        checkpoint_path = model_dir / f"{cfg.logging.model_basename}epoch_{epoch:02d}_step_{step:06d}.pt"
+        torch.save(checkpoint_data, str(checkpoint_path))
 
-            checkpoint_path = model_dir / f"{cfg.logging.model_basename}epoch_{epoch:02d}_step_{step:06d}.pt"
-            accelerator.save(checkpoint_data, str(checkpoint_path))
+        latest_path = model_dir / f"{cfg.logging.model_basename}latest.pt"
+        torch.save(checkpoint_data, str(latest_path))
 
-            latest_path = model_dir / f"{cfg.logging.model_basename}latest.pt"
-            accelerator.save(checkpoint_data, str(latest_path))
+        accelerator.print(f"Checkpoint saved successfully: {checkpoint_path}")
+        accelerator.print(f"Latest checkpoint: {latest_path}")
 
-            accelerator.print(f"Checkpoint saved successfully: {checkpoint_path}")
-            accelerator.print(f"Latest checkpoint: {latest_path}")
+        cleanup_old_checkpoints(cfg, keep_last_n=5)
 
-            cleanup_old_checkpoints(cfg, keep_last_n=5)
+        accelerator.wait_for_everyone()
 
     except Exception as e:
         accelerator.print(f"Error saving checkpoint: {e}")
@@ -396,8 +411,8 @@ def decode_until_end(ids, id_to_token, end_token="<end>"):
 
 def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerator):
     accelerator.wait_for_everyone()
-    model.eval()
 
+    model.eval()
     total_loss = 0
     total_bleu = 0
     total_samples = 0
@@ -417,7 +432,13 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
                 if total_samples >= max_samples:
                     break
 
-                inputs = {k: v for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
+                inputs = {}
+                for k, v in batch.items():
+                    if k not in ['src_text', 'tgt_text']:
+                        if hasattr(v, 'to'):
+                            inputs[k] = v.to(device)
+                        else:
+                            inputs[k] = v
 
                 with torch.amp.autocast('cuda',
                                         dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
