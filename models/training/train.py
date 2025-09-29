@@ -140,22 +140,14 @@ def train_model(cfg: DictConfig):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    epoch_progress = tqdm(range(epoch, cfg.training.num_epochs), desc="Training", position=0,
-                          disable=not accelerator.is_local_main_process)
-
-    for epoch in epoch_progress:
-        epoch_progress.set_description(f"Epoch {epoch + 1}/{cfg.training.num_epochs}")
+    for epoch in range(epoch, cfg.training.num_epochs):
+        accelerator.print(f"Starting epoch {epoch + 1}/{cfg.training.num_epochs}")
         model.train()
 
-        batch_iterator = tqdm(
-            enumerate(train_ds),
-            desc="Training Batch",
-            total=len(train_ds),
-            leave=False,
-            disable=not accelerator.is_local_main_process
-        )
+        epoch_loss = 0
+        batch_count = 0
 
-        for batch_idx, batch in batch_iterator:
+        for batch_idx, batch in enumerate(train_ds):
             try:
                 inputs = {k: v for k, v in batch.items() if k != 'src_text' and k != 'tgt_text'}
 
@@ -175,22 +167,27 @@ def train_model(cfg: DictConfig):
                     optimizer.step()
                     optimizer.zero_grad()
 
-                log_data = {
-                    "train/loss": loss.item(),
-                    "lr": optimizer.param_groups[0]['lr'],
-                    "epoch": epoch,
-                    "step": global_step
-                }
-
-                batch_iterator.set_postfix(loss=f"{loss.item():.4f}", lr=f"{optimizer.param_groups[0]['lr']:.6f}")
+                epoch_loss += loss.item()
+                batch_count += 1
 
                 if accelerator.is_local_main_process and global_step % cfg.logging.log_interval == 0:
+                    log_data = {
+                        "train/loss": loss.item(),
+                        "lr": optimizer.param_groups[0]['lr'],
+                        "epoch": epoch,
+                        "step": global_step
+                    }
                     run.log(log_data)
+
+                    if global_step % 100 == 0:
+                        avg_loss = epoch_loss / batch_count
+                        accelerator.print(
+                            f"Epoch {epoch + 1}, Step {global_step}, Batch {batch_idx + 1}/{len(train_ds)}, Loss: {avg_loss:.4f}, LR: {optimizer.param_groups[0]['lr']:.6f}")
 
                 global_step += 1
 
                 if global_step % cfg.training.validation_interval_steps == 0:
-                    accelerator.print(f"\nRunning validation at step {global_step}...")
+                    accelerator.print(f"Running validation at step {global_step}...")
                     try:
                         accelerator.wait_for_everyone()
                         if torch.cuda.is_available():
@@ -237,7 +234,7 @@ def train_model(cfg: DictConfig):
                 global_step += 1
                 continue
 
-        accelerator.print(f"\nRunning end-of-epoch validation...")
+        accelerator.print(f"Running end-of-epoch validation for epoch {epoch + 1}...")
         try:
             accelerator.wait_for_everyone()
             if torch.cuda.is_available():
@@ -272,6 +269,9 @@ def train_model(cfg: DictConfig):
 
             gc.collect()
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
+        avg_epoch_loss = epoch_loss / batch_count if batch_count > 0 else 0
+        accelerator.print(f"Completed epoch {epoch + 1}/{cfg.training.num_epochs}, Average Loss: {avg_epoch_loss:.4f}")
 
     run.finish()
 
@@ -430,16 +430,11 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
     total_samples = 0
     max_samples = cfg.training.validation_samples
 
-    val_iterator = tqdm(
-        enumerate(val_loader),
-        desc="Validation",
-        total=min(len(val_loader), max_samples // cfg.training.batch_size + 1),
-        leave=False,
-        disable=not accelerator.is_local_main_process
-    )
+    accelerator.print(
+        f"Running validation on {min(len(val_loader), max_samples // cfg.training.batch_size + 1)} batches...")
 
     with torch.no_grad():
-        for batch_idx, batch in val_iterator:
+        for batch_idx, batch in enumerate(val_loader):
             try:
                 if total_samples >= max_samples:
                     break
@@ -482,7 +477,8 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
                     total_bleu += bleu_score
                     total_samples += 1
 
-                val_iterator.set_postfix(loss=f"{loss:.4f}", samples=total_samples)
+                if batch_idx % 10 == 0:
+                    accelerator.print(f"Validation batch {batch_idx + 1}, Loss: {loss:.4f}, Samples: {total_samples}")
 
             except Exception as e:
                 accelerator.print(f"Error in validation batch {batch_idx}: {e}")
