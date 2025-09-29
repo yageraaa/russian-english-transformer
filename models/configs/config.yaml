@@ -1,5 +1,6 @@
 defaults:
-  - _self_
+- _self_
+
 data:
   base_dir: .
   #base_dir: /app/api
@@ -8,6 +9,7 @@ data:
   model_dir: ${data.base_dir}/checkpoints
   model_weights: ${data.model_dir}/transformer_00.pt
   log_dir: ${data.base_dir}/logs
+
 training:
   batch_size: 256
   num_epochs: 30
@@ -22,24 +24,29 @@ training:
   gradient_clip_norm: 1.0
   checkpoint_interval_steps: 10000
   num_workers: 4
+
 model:
-  d_model: 512
-  num_heads: 8
-  num_layers: 6
-  d_ff: 2048
+  d_model: 256
+  num_heads: 4
+  num_layers: 4
+  d_ff: 1024
+
 language:
   src_lang: ru
   tgt_lang: en
+
 dataset:
   name: wmt19
   config_name: ru-en
   train_split: train
   validation_split: validation
+
 vocabs:
   ru_token_to_id: ${data.tokenizer_dir}/ru-vocab/ru_token_to_id.json
   ru_id_to_token: ${data.tokenizer_dir}/ru-vocab/ru_id_to_token.json
   en_token_to_id: ${data.tokenizer_dir}/en-vocab/en_token_to_id.json
   en_id_to_token: ${data.tokenizer_dir}/en-vocab/en_id_to_token.json
+
 logging:
   model_basename: transformer_
   preload: latest
@@ -50,6 +57,14 @@ logging:
   log_examples_every_checkpoint: True
   #run_id: "5lo4muld"
   #resume: must
+
+mlop:
+  project_name: ru-en-transformer
+  run_name_prefix: transformer-ru-en
+  log_metrics_interval: 50
+  log_examples_interval: 1000
+  save_artifacts: True
+
 hydra:
   run:
     dir: ${data.base_dir}/outputs
