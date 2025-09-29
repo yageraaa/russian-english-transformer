@@ -48,8 +48,9 @@ logging:
   example_interval: 1
   log_examples: True
   log_examples_every_checkpoint: True
-  #run_id: "5lo4muld"
-  #resume: must
+  mlop_project: ru-en-transformer
+  log_translation_examples: True
+  translation_examples_count: 15
 hydra:
   run:
     dir: ${data.base_dir}/outputs

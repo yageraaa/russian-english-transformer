@@ -1,5 +1,4 @@
-import mlflow
-import mlflow.pytorch
+import mlop
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -9,6 +8,7 @@ import hydra
 from omegaconf import DictConfig
 from pathlib import Path
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from nltk.translate import meteor
 from accelerate import Accelerator
 from models.data.dataset import BilingualTranslationDataset, load_hf_dataset
 from models.transformer.transformer import TransformerWithNewTechniques
@@ -25,15 +25,16 @@ import numpy as np
 def train_model(cfg: DictConfig):
     accelerator = Accelerator(
         mixed_precision=getattr(cfg.training, 'mixed_precision', 'no'),
-        gradient_accumulation_steps=getattr(cfg.training, 'gradient_accumulation_steps', 1),
-        log_with="mlflow"
+        gradient_accumulation_steps=getattr(cfg.training, 'gradient_accumulation_steps', 1)
     )
     device = accelerator.device
 
-    mlflow.set_tracking_uri("file:./mlruns")
-    mlflow.set_experiment("transformer-ru-en")
-    mlflow.start_run(run_name=f"transformer-ru-en-{int(time())}")
-    mlflow.log_params(hydra.utils.instantiate(cfg))
+    mlop.init(
+        project=cfg.logging.experiment_name,
+        name=f"transformer-ru-en-{int(time())}"
+    )
+    
+    mlop.log(hydra.utils.instantiate(cfg))
 
     tokenizer = Tokenizer({
         'ru_token_to_id': cfg.vocabs.ru_token_to_id,
@@ -41,6 +42,7 @@ def train_model(cfg: DictConfig):
         'en_token_to_id': cfg.vocabs.en_token_to_id,
         'en_id_to_token': cfg.vocabs.en_id_to_token
     })
+    
 
     accelerator.print("Loading dataset...")
     dataset = load_hf_dataset(cfg)
@@ -125,7 +127,7 @@ def train_model(cfg: DictConfig):
                 memory_allocated = torch.cuda.memory_allocated(i) / 1024 ** 3
                 accelerator.print(f"GPU {i} memory usage: {memory_allocated:.2f} GB")
 
-        mlflow.end_run()
+        mlop.finish()
         accelerator.print("Training stopped safely.")
         exit(0)
 
@@ -177,7 +179,8 @@ def train_model(cfg: DictConfig):
                 batch_iterator.set_postfix(loss=f"{loss.item():.4f}", lr=f"{optimizer.param_groups[0]['lr']:.6f}")
 
                 if accelerator.is_local_main_process:
-                    mlflow.log_metrics(log_data, step=global_step)
+                    mlop.log(log_data)
+                    
 
                 global_step += 1
 
@@ -191,12 +194,15 @@ def train_model(cfg: DictConfig):
                                                                accelerator)
 
                         if accelerator.is_local_main_process:
-                            mlflow.log_metrics(
-                                {"val/loss": val_loss, "epoch": epoch, "step": global_step, **val_metrics},
-                                step=global_step)
+                            mlop.log({
+                                "val/loss": val_loss, 
+                                "epoch": epoch, 
+                                "step": global_step, 
+                                **val_metrics
+                            })
 
                             if getattr(cfg.logging, 'log_examples', True):
-                                log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator)
+                                log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step)
 
                         accelerator.wait_for_everyone()
                         save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
@@ -232,11 +238,15 @@ def train_model(cfg: DictConfig):
             val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg, accelerator)
 
             if accelerator.is_local_main_process:
-                mlflow.log_metrics({"val/loss": val_loss, "epoch": epoch, "step": global_step, **val_metrics},
-                                   step=global_step)
+                mlop.log({
+                    "val/loss": val_loss, 
+                    "epoch": epoch, 
+                    "step": global_step, 
+                    **val_metrics
+                })
 
                 if getattr(cfg.logging, 'log_examples', True):
-                    log_translations_mlflow(model, tokenizer, device, cfg, epoch, accelerator)
+                    log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step)
 
             accelerator.wait_for_everyone()
             save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
@@ -255,7 +265,7 @@ def train_model(cfg: DictConfig):
             gc.collect()
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
-    mlflow.end_run()
+        mlop.finish()
 
     accelerator.print("Training completed. Cleaning up GPU memory...")
     gc.collect()
@@ -409,6 +419,7 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
     model.eval()
     total_loss = 0
     total_bleu = 0
+    total_meteor = 0
     total_samples = 0
     max_samples = cfg.training.validation_samples
 
@@ -461,7 +472,9 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
                     )
                     ref = batch['tgt_text'][i]
                     bleu_score = calculate_bleu(pred, ref)
+                    meteor_score = calculate_meteor(pred, ref)
                     total_bleu += bleu_score
+                    total_meteor += meteor_score
                     total_samples += 1
 
                 val_iterator.set_postfix(loss=f"{loss:.4f}", samples=total_samples)
@@ -473,13 +486,16 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
 
     avg_loss = total_loss / (batch_idx + 1) if batch_idx >= 0 else 0
     avg_bleu = total_bleu / total_samples if total_samples > 0 else 0
+    avg_meteor = total_meteor / total_samples if total_samples > 0 else 0
 
-    accelerator.print(f"Validation results: Loss = {avg_loss:.4f}, BLEU = {avg_bleu:.4f}, Samples = {total_samples}")
+    accelerator.print(f"Validation results: Loss = {avg_loss:.4f}, BLEU = {avg_bleu:.2f}, METEOR = {avg_meteor:.2f}, Samples = {total_samples}")
 
     metrics = {
         "val/bleu": avg_bleu,
+        "val/meteor": avg_meteor,
         "val/samples": total_samples
     }
+    
 
     return avg_loss, metrics
 
@@ -500,7 +516,22 @@ def calculate_bleu(prediction: str, reference: str) -> float:
     if not pred_tokens or not ref_tokens:
         return 0.0
 
-    return sentence_bleu([ref_tokens], pred_tokens, smoothing_function=SmoothingFunction().method1)
+    bleu_score = sentence_bleu([ref_tokens], pred_tokens, smoothing_function=SmoothingFunction().method1)
+    return bleu_score * 100
+
+
+def calculate_meteor(prediction: str, reference: str) -> float:
+    try:
+        pred_tokens = prediction.lower().split()
+        ref_tokens = reference.lower().split()
+        
+        if not pred_tokens or not ref_tokens:
+            return 0.0
+            
+        meteor_score = meteor.meteor_score([ref_tokens], pred_tokens)
+        return meteor_score * 100
+    except Exception:
+        return 0.0
 
 
 def cleanup_old_checkpoints(cfg: DictConfig, keep_last_n: int = 5):
@@ -518,7 +549,7 @@ def cleanup_old_checkpoints(cfg: DictConfig, keep_last_n: int = 5):
             print(f"Failed to delete old checkpoint {old_checkpoint}: {e}")
 
 
-def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: int, accelerator, step: int = None):
+def log_translations_mlop(model, tokenizer, device, cfg: DictConfig, epoch: int, accelerator, step: int = None):
     try:
         examples = [
             ("Привет, как дела?", "Hello, how are you?"),
@@ -540,6 +571,8 @@ def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: in
 
         model.eval()
         translations = []
+        total_bleu = 0.0
+        total_meteor = 0.0
 
         with torch.no_grad():
             for src, ref in examples:
@@ -565,29 +598,56 @@ def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: in
                         getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token")
                     )
 
+                    bleu_score = calculate_bleu(translation, ref)
+                    meteor_score = calculate_meteor(translation, ref)
+                    total_bleu += bleu_score
+                    total_meteor += meteor_score
+                    
                     accelerator.print(
                         f"Epoch {epoch} Step {step} - Source: {src}, Reference: {ref}, Translation: {translation}")
-                    translations.append([src, ref, translation])
+                    translations.append([src, ref, translation, bleu_score, meteor_score])
 
                 except Exception as e:
                     accelerator.print(f"Error translating example '{src}': {e}")
-                    translations.append([src, ref, "Translation failed"])
+                    translations.append([src, ref, "Translation failed", 0.0, 0.0])
 
+        avg_bleu = total_bleu / len(translations) if translations else 0.0
+        avg_meteor = total_meteor / len(translations) if translations else 0.0
+        
+        translation_data = {
+            "translation/avg_bleu": avg_bleu,
+            "translation/avg_meteor": avg_meteor,
+            "translation/epoch": epoch,
+            "translation/step": step if step is not None else epoch
+        }
+        
+        for i, (src, ref, trans, bleu, meteor) in enumerate(translations):
+            translation_data[f"translation/example_{i+1}_bleu"] = bleu
+            translation_data[f"translation/example_{i+1}_meteor"] = meteor
+        
+        mlop.log(translation_data)
+        
         step_info = f"_step_{step:06d}" if step is not None else ""
-        translation_text = f"Epoch {epoch}{step_info} Translations:\n"
-        for i, (src, ref, trans) in enumerate(translations):
-            bleu_score = calculate_bleu(trans, ref)
-            translation_text += f"Example {i + 1}:\nSource: {src}\nReference: {ref}\nTranslation: {trans}\nBLEU: {bleu_score:.4f}\n\n"
-
-        mlflow.log_text(translation_text, f"translations_epoch_{epoch}{step_info}.txt")
-
-        for i, (src, ref, trans) in enumerate(translations):
-            bleu_score = calculate_bleu(trans, ref)
-            mlflow.log_metric(f"example_{i + 1}_bleu", bleu_score, step=step if step else epoch)
-            mlflow.log_metric(f"example_{i + 1}_bleu_epoch", bleu_score, step=epoch)
+        table_title = f"Translation Examples - Epoch {epoch}{step_info}"
+        
+        table_data = []
+        for i, (src, ref, trans, bleu, meteor) in enumerate(translations):
+            table_data.append({
+                "№": i + 1,
+                "Russian": src,
+                "English": ref,
+                "Model Translation": trans
+            })
+        
+        mlop.log({
+            "translation_table": {
+                "title": table_title,
+                "data": table_data
+            }
+        })
 
     except Exception as e:
-        accelerator.print(f"Error in log_translations_mlflow: {e}")
+        accelerator.print(f"Error in log_translations_mlop: {e}")
         accelerator.print("Skipping translation logging...")
 
 
