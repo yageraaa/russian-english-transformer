@@ -19,6 +19,10 @@ import gc
 import re
 import random
 import numpy as np
+import logging
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("mlop").setLevel(logging.WARNING)
 
 
 @hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
@@ -31,7 +35,8 @@ def train_model(cfg: DictConfig):
 
     mlop.init(
         project=cfg.logging.experiment_name,
-        name=f"transformer-ru-en-{int(time())}"
+        name=f"transformer-ru-en-{int(time())}",
+        log_level="WARNING"
     )
     
     mlop.log(hydra.utils.instantiate(cfg))
