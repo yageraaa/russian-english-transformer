@@ -1,3 +1,4 @@
+import logging
 import mlop
 import torch
 import torch.nn as nn
@@ -18,11 +19,16 @@ import gc
 import re
 import random
 import numpy as np
+import warnings
 
 
 @hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
 def train_model(cfg: DictConfig):
     accelerator = Accelerator(
+        warnings.filterwarnings("ignore", category=FutureWarning, module="torch.cuda.*"),
+        logging.getLogger("pynvml").setLevel(logging.WARNING),
+        logging.getLogger("httpx").setLevel(logging.WARNING),
+        logging.getLogger("mlop").setLevel(logging.WARNING),
         mixed_precision=getattr(cfg.training, 'mixed_precision', 'no'),
         gradient_accumulation_steps=getattr(cfg.training, 'gradient_accumulation_steps', 1)
     )
