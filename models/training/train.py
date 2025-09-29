@@ -18,22 +18,6 @@ import gc
 import re
 import random
 import numpy as np
-import logging
-import warnings
-
-warnings.filterwarnings("ignore", message=".*No device id is provided.*")
-warnings.filterwarnings("ignore", message=".*Using the current device set by the user.*")
-warnings.filterwarnings("ignore", category=UserWarning, module="torch.distributed")
-
-logging.getLogger("httpx").setLevel(logging.CRITICAL)
-logging.getLogger("mlop").setLevel(logging.CRITICAL)
-logging.getLogger("mlop.console").setLevel(logging.CRITICAL)
-logging.getLogger("mlop.auth").setLevel(logging.CRITICAL)
-logging.getLogger("mlop.interface").setLevel(logging.CRITICAL)
-logging.getLogger("mlop.operation").setLevel(logging.CRITICAL)
-logging.getLogger("mlop.system").setLevel(logging.CRITICAL)
-logging.getLogger("torch.distributed").setLevel(logging.CRITICAL)
-logging.getLogger("torch.distributed.distributed_c10d").setLevel(logging.CRITICAL)
 
 
 @hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
@@ -48,10 +32,7 @@ def train_model(cfg: DictConfig):
     try:
         mlop.init(
             project=cfg.logging.experiment_name,
-            name=f"transformer-ru-en-{int(time())}",
-            log_level="CRITICAL",
-            capture_console=False,
-            capture_warnings=False
+            name=f"transformer-ru-en-{int(time())}"
         )
         mlop.log(hydra.utils.instantiate(cfg))
         mlop_initialized = True
