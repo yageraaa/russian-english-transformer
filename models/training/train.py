@@ -20,14 +20,18 @@ import random
 import numpy as np
 import logging
 
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("mlop").setLevel(logging.WARNING)
-logging.getLogger("console").setLevel(logging.WARNING)
-logging.getLogger("mlop.console").setLevel(logging.WARNING)
-logging.getLogger("mlop.auth").setLevel(logging.WARNING)
-logging.getLogger("mlop.interface").setLevel(logging.WARNING)
-logging.getLogger("mlop.operation").setLevel(logging.WARNING)
-logging.getLogger("mlop.system").setLevel(logging.WARNING)
+import warnings
+warnings.filterwarnings("ignore")
+
+logging.getLogger("httpx").setLevel(logging.ERROR)
+logging.getLogger("mlop").setLevel(logging.ERROR)
+logging.getLogger("console").setLevel(logging.ERROR)
+logging.getLogger("mlop.console").setLevel(logging.ERROR)
+logging.getLogger("mlop.auth").setLevel(logging.ERROR)
+logging.getLogger("mlop.interface").setLevel(logging.ERROR)
+logging.getLogger("mlop.operation").setLevel(logging.ERROR)
+logging.getLogger("mlop.system").setLevel(logging.ERROR)
+logging.getLogger("torch.distributed").setLevel(logging.ERROR)
 
 
 @hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
@@ -38,14 +42,18 @@ def train_model(cfg: DictConfig):
     )
     device = accelerator.device
 
-    mlop.init(
-        project=cfg.logging.experiment_name,
-        name=f"transformer-ru-en-{int(time())}",
-        log_level="WARNING",
-        capture_console=False
-    )
-    
-    mlop.log(hydra.utils.instantiate(cfg))
+    try:
+        mlop.init(
+            project=cfg.logging.experiment_name,
+            name=f"transformer-ru-en-{int(time())}",
+            log_level="ERROR",
+            capture_console=False,
+            capture_warnings=False
+        )
+        mlop.log(hydra.utils.instantiate(cfg))
+    except Exception as e:
+        print(f"Warning: mlop initialization failed: {e}")
+        print("Continuing without mlop logging...")
 
     tokenizer = Tokenizer({
         'ru_token_to_id': cfg.vocabs.ru_token_to_id,
@@ -138,7 +146,10 @@ def train_model(cfg: DictConfig):
                 memory_allocated = torch.cuda.memory_allocated(i) / 1024 ** 3
                 accelerator.print(f"GPU {i} memory usage: {memory_allocated:.2f} GB")
 
-        mlop.finish()
+        try:
+            mlop.finish()
+        except:
+            pass
         accelerator.print("Training stopped safely.")
         exit(0)
 
@@ -190,7 +201,10 @@ def train_model(cfg: DictConfig):
                 batch_iterator.set_postfix(loss=f"{loss.item():.4f}", lr=f"{optimizer.param_groups[0]['lr']:.6f}")
 
                 if accelerator.is_local_main_process:
-                    mlop.log(log_data)
+                    try:
+                        mlop.log(log_data)
+                    except:
+                        pass
                     
 
                 global_step += 1
@@ -205,12 +219,15 @@ def train_model(cfg: DictConfig):
                                                                accelerator)
 
                         if accelerator.is_local_main_process:
-                            mlop.log({
-                                "val/loss": val_loss, 
-                                "epoch": epoch, 
-                                "step": global_step, 
-                                **val_metrics
-                            })
+                            try:
+                                mlop.log({
+                                    "val/loss": val_loss, 
+                                    "epoch": epoch, 
+                                    "step": global_step, 
+                                    **val_metrics
+                                })
+                            except:
+                                pass
 
                             if getattr(cfg.logging, 'log_examples', True):
                                 log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step)
@@ -249,12 +266,15 @@ def train_model(cfg: DictConfig):
             val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg, accelerator)
 
             if accelerator.is_local_main_process:
-                mlop.log({
-                    "val/loss": val_loss, 
-                    "epoch": epoch, 
-                    "step": global_step, 
-                    **val_metrics
-                })
+                try:
+                    mlop.log({
+                        "val/loss": val_loss, 
+                        "epoch": epoch, 
+                        "step": global_step, 
+                        **val_metrics
+                    })
+                except:
+                    pass
 
                 if getattr(cfg.logging, 'log_examples', True):
                     log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step)
@@ -276,7 +296,10 @@ def train_model(cfg: DictConfig):
             gc.collect()
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
-        mlop.finish()
+        try:
+            mlop.finish()
+        except:
+            pass
 
     accelerator.print("Training completed. Cleaning up GPU memory...")
     gc.collect()
@@ -603,7 +626,10 @@ def log_translations_mlop(model, tokenizer, device, cfg: DictConfig, epoch: int,
             "translation/step": step if step is not None else epoch
         }
         
-        mlop.log(translation_data)
+        try:
+            mlop.log(translation_data)
+        except:
+            pass
 
     except Exception as e:
         accelerator.print(f"Error in log_translations_mlop: {e}")
