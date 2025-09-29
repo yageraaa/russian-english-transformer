@@ -16,7 +16,7 @@ training:
   lr: 0.0003
   dropout: 0.1
   seq_len: 100
-  validation_interval_steps: 10000
+  validation_interval_steps: 1000
   validation_samples: 10000
   use_pretrained_decoder: false
   mixed_precision: bf16
