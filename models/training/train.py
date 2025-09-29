@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from time import time
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from accelerate import Accelerator
@@ -29,10 +29,12 @@ def train_model(cfg: DictConfig):
 
     device = accelerator.device
 
+    config_dict = OmegaConf.to_container(cfg, resolve=True)
+
     run = mlop.init(
         project=cfg.logging.experiment_name,
         name=f"{cfg.logging.experiment_name}-{int(time())}",
-        config=hydra.utils.instantiate(cfg)
+        config=config_dict
     )
 
     tokenizer = Tokenizer({
