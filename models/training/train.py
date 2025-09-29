@@ -26,7 +26,6 @@ def train_model(cfg: DictConfig):
         mixed_precision=getattr(cfg.training, 'mixed_precision', 'no'),
         gradient_accumulation_steps=getattr(cfg.training, 'gradient_accumulation_steps', 1)
     )
-
     device = accelerator.device
 
     config_dict = OmegaConf.to_container(cfg, resolve=True)
@@ -47,14 +46,11 @@ def train_model(cfg: DictConfig):
     accelerator.print("Loading dataset...")
     dataset = load_hf_dataset(cfg)
     train_ds, val_ds = create_datasets(cfg, tokenizer, dataset)
-
     accelerator.print(f"Train dataset size: {len(train_ds.dataset)}")
     accelerator.print(f"Validation dataset size: {len(val_ds.dataset)}")
-
     accelerator.print("Initializing model...")
     accelerator.print(f"Using device: {device}")
     accelerator.print(f"Number of GPUs: {torch.cuda.device_count() if torch.cuda.is_available() else 0}")
-
     if torch.cuda.is_available():
         for i in range(torch.cuda.device_count()):
             accelerator.print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
@@ -82,7 +78,7 @@ def train_model(cfg: DictConfig):
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
     loss_fn = nn.CrossEntropyLoss(
-        ignore_index=tokenizer.en_token_to_id['<PAD>'],
+        ignore_index=tokenizer.en_token_to_id['<pad>'],
         label_smoothing=0.1
     )
 
@@ -121,6 +117,7 @@ def train_model(cfg: DictConfig):
         accelerator.wait_for_everyone()
         save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
         accelerator.print(f"Checkpoint saved at {get_weights_file_path(cfg, epoch)}")
+
         accelerator.print("Cleaning up GPU memory...")
         gc.collect()
         if torch.cuda.is_available():
@@ -128,6 +125,7 @@ def train_model(cfg: DictConfig):
             for i in range(torch.cuda.device_count()):
                 memory_allocated = torch.cuda.memory_allocated(i) / 1024 ** 3
                 accelerator.print(f"GPU {i} memory usage: {memory_allocated:.2f} GB")
+
         run.finish()
         accelerator.print("Training stopped safely.")
         exit(0)
@@ -190,7 +188,6 @@ def train_model(cfg: DictConfig):
                         accelerator.wait_for_everyone()
                         if torch.cuda.is_available():
                             torch.cuda.synchronize()
-
                         val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg,
                                                                accelerator)
 
@@ -203,8 +200,9 @@ def train_model(cfg: DictConfig):
                             }
                             run.log(validation_data)
 
-                        if getattr(cfg.logging, 'log_examples', True):
-                            log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, run, global_step)
+                            if getattr(cfg.logging, 'log_examples', True):
+                                log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, run,
+                                                      global_step)
 
                         accelerator.wait_for_everyone()
                         save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
@@ -220,6 +218,7 @@ def train_model(cfg: DictConfig):
                             save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
                         except Exception as checkpoint_error:
                             accelerator.print(f"Error saving checkpoint: {checkpoint_error}")
+
                         model.train()
                         gc.collect()
                         torch.cuda.empty_cache() if torch.cuda.is_available() else None
@@ -236,7 +235,6 @@ def train_model(cfg: DictConfig):
             accelerator.wait_for_everyone()
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
-
             val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg, accelerator)
 
             if accelerator.is_local_main_process:
@@ -248,8 +246,8 @@ def train_model(cfg: DictConfig):
                 }
                 run.log(validation_data)
 
-            if getattr(cfg.logging, 'log_examples', True):
-                log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, run)
+                if getattr(cfg.logging, 'log_examples', True):
+                    log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, run)
 
             accelerator.wait_for_everyone()
             save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
@@ -264,10 +262,12 @@ def train_model(cfg: DictConfig):
                 save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
             except Exception as checkpoint_error:
                 accelerator.print(f"Error saving checkpoint: {checkpoint_error}")
+
             gc.collect()
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
     run.finish()
+
     accelerator.print("Training completed. Cleaning up GPU memory...")
     gc.collect()
     if torch.cuda.is_available():
@@ -282,12 +282,14 @@ def train_model(cfg: DictConfig):
 def load_pretrained_decoder_weights(model, weights_path, accelerator):
     try:
         checkpoint = torch.load(weights_path, map_location='cpu', weights_only=True)
+
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
             state_dict = checkpoint["model_state_dict"]
         else:
             state_dict = checkpoint
 
         decoder_state = {}
+
         for key, value in state_dict.items():
             if key.startswith("decoder."):
                 new_key = key[len("decoder."):]
@@ -304,6 +306,7 @@ def load_pretrained_decoder_weights(model, weights_path, accelerator):
 
         model.decoder.load_state_dict(decoder_state, strict=False)
         accelerator.print(f"[✓] Decoder weights loaded ({len(decoder_state)} keys)")
+
     except Exception as e:
         accelerator.print(f"[X] Failed to load decoder weights: {e}")
 
@@ -393,16 +396,18 @@ def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, accelerator)
         accelerator.print(f"Latest checkpoint: {latest_path}")
 
         cleanup_old_checkpoints(cfg, keep_last_n=5)
+
         accelerator.wait_for_everyone()
+
     except Exception as e:
         accelerator.print(f"Error saving checkpoint: {e}")
         accelerator.print("Checkpoint save failed, but training will continue...")
 
 
-def decode_until_end(ids, id_to_token, end_token="<EOS>"):
+def decode_until_end(ids, id_to_token, end_token="<end>"):
     tokens = []
     for idx in ids:
-        token = id_to_token.get(idx, '<UNK>')
+        token = id_to_token.get(idx, '<unk>')
         if token == end_token:
             break
         tokens.append(token)
@@ -411,6 +416,7 @@ def decode_until_end(ids, id_to_token, end_token="<EOS>"):
 
 def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerator):
     accelerator.wait_for_everyone()
+
     model.eval()
     total_loss = 0
     total_bleu = 0
@@ -443,6 +449,7 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
                         inputs['decoder_mask']
                     )
                     proj_output = model.project(decoder_output)
+
                     loss = loss_fn(
                         proj_output.view(-1, len(tokenizer.en_token_to_id)),
                         inputs['label'].view(-1)
@@ -453,15 +460,15 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
                 translated = model.translate_batch(
                     inputs['encoder_input'],
                     max_len=cfg.training.seq_len,
-                    start_token_id=tokenizer.en_token_to_id['<SOS>'],
-                    end_token_id=tokenizer.en_token_to_id['<EOS>']
+                    start_token_id=tokenizer.en_token_to_id['<start>'],
+                    end_token_id=tokenizer.en_token_to_id['<end>']
                 )
 
                 for i in range(translated.size(0)):
                     pred = decode_until_end(
                         translated[i].cpu().numpy(),
                         getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token"),
-                        end_token="<EOS>"
+                        end_token="<end>"
                     )
                     ref = batch['tgt_text'][i]
                     bleu_score = calculate_bleu(pred, ref)
@@ -554,7 +561,6 @@ def log_translations_mlop(model, tokenizer, device, cfg: DictConfig, epoch: int,
                         getattr(tokenizer, f"{cfg.language.src_lang}_token_to_id"),
                         getattr(tokenizer, f"{cfg.language.src_lang}_vocab")
                     )
-
                     encoder_input = torch.tensor([input_tokens], dtype=torch.int64).to(device)
 
                     with torch.amp.autocast('cuda',
@@ -562,8 +568,8 @@ def log_translations_mlop(model, tokenizer, device, cfg: DictConfig, epoch: int,
                         output = model.translate_batch(
                             encoder_input,
                             max_len=cfg.training.seq_len,
-                            start_token_id=tokenizer.en_token_to_id['<SOS>'],
-                            end_token_id=tokenizer.en_token_to_id['<EOS>']
+                            start_token_id=tokenizer.en_token_to_id['<start>'],
+                            end_token_id=tokenizer.en_token_to_id['<end>']
                         )
 
                     translation = tokenizer.decode_ids(
@@ -585,7 +591,6 @@ def log_translations_mlop(model, tokenizer, device, cfg: DictConfig, epoch: int,
 
         step_info = f"_step_{step:06d}" if step is not None else ""
         translation_text = f"Epoch {epoch}{step_info} Translations:\n"
-
         for i, (src, ref, trans) in enumerate(translations):
             bleu_score = translation_metrics[f"example_{i + 1}_bleu"]
             translation_text += f"Example {i + 1}:\nSource: {src}\nReference: {ref}\nTranslation: {trans}\nBLEU: {bleu_score:.4f}\n\n"
@@ -609,11 +614,9 @@ def latest_weights_file_path(cfg: DictConfig) -> Optional[str]:
     model_dir = Path(cfg.data.model_dir)
     if not model_dir.exists():
         return None
-
     checkpoints = list(model_dir.glob(f"{cfg.logging.model_basename}*.pt"))
     if not checkpoints:
         return None
-
     checkpoints.sort()
     return str(checkpoints[-1])
 
