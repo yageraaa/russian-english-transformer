@@ -9,7 +9,7 @@ data:
   model_weights: ${data.model_dir}/transformer_00.pt
   log_dir: ${data.base_dir}/logs
 training:
-  batch_size: 256
+  batch_size: 128
   num_epochs: 30
   lr: 0.0003
   dropout: 0.1
