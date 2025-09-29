@@ -19,19 +19,21 @@ import re
 import random
 import numpy as np
 import logging
-
 import warnings
-warnings.filterwarnings("ignore")
 
-logging.getLogger("httpx").setLevel(logging.ERROR)
-logging.getLogger("mlop").setLevel(logging.ERROR)
-logging.getLogger("console").setLevel(logging.ERROR)
-logging.getLogger("mlop.console").setLevel(logging.ERROR)
-logging.getLogger("mlop.auth").setLevel(logging.ERROR)
-logging.getLogger("mlop.interface").setLevel(logging.ERROR)
-logging.getLogger("mlop.operation").setLevel(logging.ERROR)
-logging.getLogger("mlop.system").setLevel(logging.ERROR)
-logging.getLogger("torch.distributed").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=".*No device id is provided.*")
+warnings.filterwarnings("ignore", message=".*Using the current device set by the user.*")
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.distributed")
+
+logging.getLogger("httpx").setLevel(logging.CRITICAL)
+logging.getLogger("mlop").setLevel(logging.CRITICAL)
+logging.getLogger("mlop.console").setLevel(logging.CRITICAL)
+logging.getLogger("mlop.auth").setLevel(logging.CRITICAL)
+logging.getLogger("mlop.interface").setLevel(logging.CRITICAL)
+logging.getLogger("mlop.operation").setLevel(logging.CRITICAL)
+logging.getLogger("mlop.system").setLevel(logging.CRITICAL)
+logging.getLogger("torch.distributed").setLevel(logging.CRITICAL)
+logging.getLogger("torch.distributed.distributed_c10d").setLevel(logging.CRITICAL)
 
 
 @hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
@@ -42,18 +44,20 @@ def train_model(cfg: DictConfig):
     )
     device = accelerator.device
 
+    mlop_initialized = False
     try:
         mlop.init(
             project=cfg.logging.experiment_name,
             name=f"transformer-ru-en-{int(time())}",
-            log_level="ERROR",
+            log_level="CRITICAL",
             capture_console=False,
             capture_warnings=False
         )
         mlop.log(hydra.utils.instantiate(cfg))
+        mlop_initialized = True
     except Exception as e:
-        print(f"Warning: mlop initialization failed: {e}")
-        print("Continuing without mlop logging...")
+        accelerator.print(f"Warning: mlop initialization failed: {e}")
+        accelerator.print("Continuing without mlop logging...")
 
     tokenizer = Tokenizer({
         'ru_token_to_id': cfg.vocabs.ru_token_to_id,
@@ -61,7 +65,6 @@ def train_model(cfg: DictConfig):
         'en_token_to_id': cfg.vocabs.en_token_to_id,
         'en_id_to_token': cfg.vocabs.en_id_to_token
     })
-    
 
     accelerator.print("Loading dataset...")
     dataset = load_hf_dataset(cfg)
@@ -146,18 +149,24 @@ def train_model(cfg: DictConfig):
                 memory_allocated = torch.cuda.memory_allocated(i) / 1024 ** 3
                 accelerator.print(f"GPU {i} memory usage: {memory_allocated:.2f} GB")
 
-        try:
-            mlop.finish()
-        except:
-            pass
+        if mlop_initialized:
+            try:
+                mlop.finish()
+            except:
+                pass
         accelerator.print("Training stopped safely.")
         exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    epoch_progress = tqdm(range(epoch, cfg.training.num_epochs), desc="Training", position=0,
-                          disable=not accelerator.is_local_main_process)
+    epoch_progress = tqdm(
+        range(epoch, cfg.training.num_epochs),
+        desc="Training",
+        position=0,
+        disable=not accelerator.is_local_main_process,
+        ncols=100
+    )
 
     for epoch in epoch_progress:
         epoch_progress.set_description(f"Epoch {epoch + 1}/{cfg.training.num_epochs}")
@@ -168,7 +177,8 @@ def train_model(cfg: DictConfig):
             desc="Training Batch",
             total=len(train_ds),
             leave=False,
-            disable=not accelerator.is_local_main_process
+            disable=not accelerator.is_local_main_process,
+            ncols=100
         )
 
         for batch_idx, batch in batch_iterator:
@@ -200,12 +210,11 @@ def train_model(cfg: DictConfig):
 
                 batch_iterator.set_postfix(loss=f"{loss.item():.4f}", lr=f"{optimizer.param_groups[0]['lr']:.6f}")
 
-                if accelerator.is_local_main_process:
+                if accelerator.is_local_main_process and mlop_initialized:
                     try:
                         mlop.log(log_data)
                     except:
                         pass
-                    
 
                 global_step += 1
 
@@ -218,19 +227,20 @@ def train_model(cfg: DictConfig):
                         val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg,
                                                                accelerator)
 
-                        if accelerator.is_local_main_process:
+                        if accelerator.is_local_main_process and mlop_initialized:
                             try:
                                 mlop.log({
-                                    "val/loss": val_loss, 
-                                    "epoch": epoch, 
-                                    "step": global_step, 
+                                    "val/loss": val_loss,
+                                    "epoch": epoch,
+                                    "step": global_step,
                                     **val_metrics
                                 })
                             except:
                                 pass
 
                             if getattr(cfg.logging, 'log_examples', True):
-                                log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step)
+                                log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step,
+                                                      mlop_initialized)
 
                         accelerator.wait_for_everyone()
                         save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
@@ -265,19 +275,20 @@ def train_model(cfg: DictConfig):
                 torch.cuda.synchronize()
             val_loss, val_metrics = run_validation(model, val_ds, device, loss_fn, tokenizer, cfg, accelerator)
 
-            if accelerator.is_local_main_process:
+            if accelerator.is_local_main_process and mlop_initialized:
                 try:
                     mlop.log({
-                        "val/loss": val_loss, 
-                        "epoch": epoch, 
-                        "step": global_step, 
+                        "val/loss": val_loss,
+                        "epoch": epoch,
+                        "step": global_step,
                         **val_metrics
                     })
                 except:
                     pass
 
                 if getattr(cfg.logging, 'log_examples', True):
-                    log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step)
+                    log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step,
+                                          mlop_initialized)
 
             accelerator.wait_for_everyone()
             save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
@@ -296,6 +307,7 @@ def train_model(cfg: DictConfig):
             gc.collect()
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
+    if mlop_initialized:
         try:
             mlop.finish()
         except:
@@ -461,7 +473,8 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
         desc="Validation",
         total=min(len(val_loader), max_samples // cfg.training.batch_size + 1),
         leave=False,
-        disable=not accelerator.is_local_main_process
+        disable=not accelerator.is_local_main_process,
+        ncols=100
     )
 
     with torch.no_grad():
@@ -524,7 +537,6 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
         "val/bleu": avg_bleu,
         "val/samples": total_samples
     }
-    
 
     return avg_loss, metrics
 
@@ -549,8 +561,6 @@ def calculate_bleu(prediction: str, reference: str) -> float:
     return bleu_score * 100
 
 
-
-
 def cleanup_old_checkpoints(cfg: DictConfig, keep_last_n: int = 5):
     model_dir = Path(cfg.data.model_dir)
     if not model_dir.exists():
@@ -566,7 +576,8 @@ def cleanup_old_checkpoints(cfg: DictConfig, keep_last_n: int = 5):
             print(f"Failed to delete old checkpoint {old_checkpoint}: {e}")
 
 
-def log_translations_mlop(model, tokenizer, device, cfg: DictConfig, epoch: int, accelerator, step: int = None):
+def log_translations_mlop(model, tokenizer, device, cfg: DictConfig, epoch: int, accelerator, step: int = None,
+                          mlop_initialized: bool = False):
     try:
         examples = [
             ("Привет, как дела?", "Hello, how are you?"),
@@ -612,24 +623,23 @@ def log_translations_mlop(model, tokenizer, device, cfg: DictConfig, epoch: int,
                         output[0].cpu().numpy(),
                         getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token")
                     )
-                    
-                    accelerator.print(
-                        f"Epoch {epoch} Step {step} - Source: {src}, Reference: {ref}, Translation: {translation}")
+
+                    accelerator.print(f"Epoch {epoch} Step {step} - Source: {src}, Translation: {translation}")
                     translations.append([src, ref, translation])
 
                 except Exception as e:
                     accelerator.print(f"Error translating example '{src}': {e}")
                     translations.append([src, ref, "Translation failed"])
-        
-        translation_data = {
-            "translation/epoch": epoch,
-            "translation/step": step if step is not None else epoch
-        }
-        
-        try:
-            mlop.log(translation_data)
-        except:
-            pass
+
+        if mlop_initialized:
+            translation_data = {
+                "translation/epoch": epoch,
+                "translation/step": step if step is not None else epoch
+            }
+            try:
+                mlop.log(translation_data)
+            except:
+                pass
 
     except Exception as e:
         accelerator.print(f"Error in log_translations_mlop: {e}")
