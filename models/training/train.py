@@ -154,9 +154,8 @@ def train_model(cfg: DictConfig):
 
     epoch_progress = tqdm(
         range(epoch, cfg.training.num_epochs),
-        desc="Epochs",
+        desc="Training",
         position=0,
-        leave=True,
         disable=not accelerator.is_local_main_process,
         ncols=100
     )
@@ -167,9 +166,8 @@ def train_model(cfg: DictConfig):
 
         batch_iterator = tqdm(
             enumerate(train_ds),
-            desc="Training",
+            desc="Training Batch",
             total=len(train_ds),
-            position=1,
             leave=False,
             disable=not accelerator.is_local_main_process,
             ncols=100
@@ -214,7 +212,7 @@ def train_model(cfg: DictConfig):
                 global_step += 1
 
                 if global_step % cfg.training.validation_interval_steps == 0:
-                    batch_iterator.write(f"Running validation at step {global_step}...")
+                    accelerator.print(f"\nRunning validation at step {global_step}...")
                     try:
                         accelerator.wait_for_everyone()
                         if torch.cuda.is_available():
@@ -231,7 +229,7 @@ def train_model(cfg: DictConfig):
                                     **val_metrics
                                 })
                             except Exception as e:
-                                batch_iterator.write(f"Warning: mlop validation logging failed: {e}")
+                                accelerator.print(f"Warning: mlop validation logging failed: {e}")
 
                             if getattr(cfg.logging, 'log_examples', True):
                                 log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step,
@@ -244,26 +242,26 @@ def train_model(cfg: DictConfig):
                         torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
                     except Exception as e:
-                        batch_iterator.write(f"Error during validation at step {global_step}: {e}")
-                        batch_iterator.write("Skipping validation and continuing training...")
+                        accelerator.print(f"Error during validation at step {global_step}: {e}")
+                        accelerator.print("Skipping validation and continuing training...")
                         try:
                             accelerator.wait_for_everyone()
                             save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
                         except Exception as checkpoint_error:
-                            batch_iterator.write(f"Error saving checkpoint: {checkpoint_error}")
+                            accelerator.print(f"Error saving checkpoint: {checkpoint_error}")
 
                         model.train()
                         gc.collect()
                         torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
             except Exception as e:
-                batch_iterator.write(f"Error in training batch {batch_idx} at step {global_step}: {e}")
-                batch_iterator.write("Skipping this batch and continuing...")
+                accelerator.print(f"Error in training batch {batch_idx} at step {global_step}: {e}")
+                accelerator.print("Skipping this batch and continuing...")
                 optimizer.zero_grad()
                 global_step += 1
                 continue
 
-        epoch_progress.write(f"Running end-of-epoch validation...")
+        accelerator.print(f"\nRunning end-of-epoch validation...")
         try:
             accelerator.wait_for_everyone()
             if torch.cuda.is_available():
@@ -279,7 +277,7 @@ def train_model(cfg: DictConfig):
                         **val_metrics
                     })
                 except Exception as e:
-                    epoch_progress.write(f"Warning: mlop end-of-epoch logging failed: {e}")
+                    accelerator.print(f"Warning: mlop end-of-epoch logging failed: {e}")
 
                 if getattr(cfg.logging, 'log_examples', True):
                     log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step,
@@ -291,13 +289,13 @@ def train_model(cfg: DictConfig):
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
         except Exception as e:
-            epoch_progress.write(f"Error during end-of-epoch validation: {e}")
-            epoch_progress.write("Skipping validation but saving checkpoint...")
+            accelerator.print(f"Error during end-of-epoch validation: {e}")
+            accelerator.print("Skipping validation but saving checkpoint...")
             try:
                 accelerator.wait_for_everyone()
                 save_checkpoint(cfg, epoch, global_step, model, optimizer, accelerator)
             except Exception as checkpoint_error:
-                epoch_progress.write(f"Error saving checkpoint: {checkpoint_error}")
+                accelerator.print(f"Error saving checkpoint: {checkpoint_error}")
 
             gc.collect()
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
@@ -467,7 +465,6 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
         enumerate(val_loader),
         desc="Validation",
         total=min(len(val_loader), max_samples // cfg.training.batch_size + 1),
-        position=1,
         leave=False,
         disable=not accelerator.is_local_main_process,
         ncols=100
@@ -520,8 +517,8 @@ def run_validation(model, val_loader, device, loss_fn, tokenizer, cfg, accelerat
                 val_iterator.set_postfix(loss=f"{loss:.4f}", samples=total_samples)
 
             except Exception as e:
-                val_iterator.write(f"Error in validation batch {batch_idx}: {e}")
-                val_iterator.write("Skipping this validation batch...")
+                accelerator.print(f"Error in validation batch {batch_idx}: {e}")
+                accelerator.print("Skipping this validation batch...")
                 continue
 
     avg_loss = total_loss / (batch_idx + 1) if batch_idx >= 0 else 0
