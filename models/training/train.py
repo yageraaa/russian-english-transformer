@@ -25,15 +25,9 @@ warnings.filterwarnings("ignore", message=".*No device id is provided.*")
 warnings.filterwarnings("ignore", message=".*Using the current device set by the user.*")
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.distributed")
 
-logging.getLogger("httpx").setLevel(logging.CRITICAL)
-logging.getLogger("mlop").setLevel(logging.CRITICAL)
-logging.getLogger("mlop.console").setLevel(logging.CRITICAL)
-logging.getLogger("mlop.auth").setLevel(logging.CRITICAL)
-logging.getLogger("mlop.interface").setLevel(logging.CRITICAL)
-logging.getLogger("mlop.operation").setLevel(logging.CRITICAL)
-logging.getLogger("mlop.system").setLevel(logging.CRITICAL)
-logging.getLogger("torch.distributed").setLevel(logging.CRITICAL)
-logging.getLogger("torch.distributed.distributed_c10d").setLevel(logging.CRITICAL)
+logging.getLogger("httpx").setLevel(logging.ERROR)
+logging.getLogger("mlop").setLevel(logging.ERROR)
+logging.getLogger("torch.distributed").setLevel(logging.ERROR)
 
 
 @hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
@@ -49,12 +43,10 @@ def train_model(cfg: DictConfig):
         mlop.init(
             project=cfg.logging.experiment_name,
             name=f"transformer-ru-en-{int(time())}",
-            log_level="CRITICAL",
-            capture_console=False,
-            capture_warnings=False
         )
         mlop.log(hydra.utils.instantiate(cfg))
         mlop_initialized = True
+        accelerator.print("✓ mlop.ai initialized successfully")
     except Exception as e:
         accelerator.print(f"Warning: mlop initialization failed: {e}")
         accelerator.print("Continuing without mlop logging...")
@@ -213,8 +205,9 @@ def train_model(cfg: DictConfig):
                 if accelerator.is_local_main_process and mlop_initialized:
                     try:
                         mlop.log(log_data)
-                    except:
-                        pass
+                    except Exception as e:
+                        if global_step % 100 == 0:
+                            accelerator.print(f"Warning: mlop logging failed at step {global_step}: {e}")
 
                 global_step += 1
 
@@ -235,8 +228,8 @@ def train_model(cfg: DictConfig):
                                     "step": global_step,
                                     **val_metrics
                                 })
-                            except:
-                                pass
+                            except Exception as e:
+                                accelerator.print(f"Warning: mlop validation logging failed: {e}")
 
                             if getattr(cfg.logging, 'log_examples', True):
                                 log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step,
@@ -283,8 +276,8 @@ def train_model(cfg: DictConfig):
                         "step": global_step,
                         **val_metrics
                     })
-                except:
-                    pass
+                except Exception as e:
+                    accelerator.print(f"Warning: mlop end-of-epoch logging failed: {e}")
 
                 if getattr(cfg.logging, 'log_examples', True):
                     log_translations_mlop(model, tokenizer, device, cfg, epoch, accelerator, global_step,
@@ -598,10 +591,10 @@ def log_translations_mlop(model, tokenizer, device, cfg: DictConfig, epoch: int,
         ]
 
         model.eval()
-        translations = []
+        translations_data = []
 
         with torch.no_grad():
-            for src, ref in examples:
+            for idx, (src, ref) in enumerate(examples, 1):
                 try:
                     input_tokens = tokenizer.encode_text(
                         src,
@@ -624,22 +617,54 @@ def log_translations_mlop(model, tokenizer, device, cfg: DictConfig, epoch: int,
                         getattr(tokenizer, f"{cfg.language.tgt_lang}_id_to_token")
                     )
 
-                    accelerator.print(f"Epoch {epoch} Step {step} - Source: {src}, Translation: {translation}")
-                    translations.append([src, ref, translation])
+                    translations_data.append([
+                        idx,
+                        src,
+                        ref,
+                        translation,
+                        epoch,
+                        step if step is not None else epoch
+                    ])
+
+                    if idx <= 3:
+                        accelerator.print(f"Example {idx}: '{src}' -> '{translation}'")
 
                 except Exception as e:
-                    accelerator.print(f"Error translating example '{src}': {e}")
-                    translations.append([src, ref, "Translation failed"])
+                    accelerator.print(f"Error translating example {idx} '{src}': {e}")
+                    translations_data.append([
+                        idx, src, ref, "Translation failed", epoch, step if step is not None else epoch
+                    ])
 
-        if mlop_initialized:
-            translation_data = {
-                "translation/epoch": epoch,
-                "translation/step": step if step is not None else epoch
-            }
+        if mlop_initialized and translations_data:
             try:
-                mlop.log(translation_data)
-            except:
-                pass
+                translation_table = mlop.Table(
+                    columns=["ID", "Source", "Reference", "Translation", "Epoch", "Step"],
+                    data=translations_data
+                )
+
+                table_key = f"translations_epoch_{epoch}" + (f"_step_{step}" if step is not None else "")
+
+                mlop.log({
+                    table_key: translation_table,
+                    "translations/epoch": epoch,
+                    "translations/step": step if step is not None else epoch,
+                    "translations/count": len(translations_data)
+                })
+
+                accelerator.print(f"✓ Translation table logged to mlop.ai with {len(translations_data)} examples")
+
+            except Exception as e:
+                accelerator.print(f"Warning: Failed to log translation table to mlop: {e}")
+                try:
+                    mlop.log({
+                        "translations/epoch": epoch,
+                        "translations/step": step if step is not None else epoch,
+                        "translations/total_examples": len(translations_data),
+                        "translations/successful_translations": len(
+                            [t for t in translations_data if t[3] != "Translation failed"])
+                    })
+                except:
+                    pass
 
     except Exception as e:
         accelerator.print(f"Error in log_translations_mlop: {e}")
