@@ -35,6 +35,11 @@ dataset:
   config_name: ru-en
   train_split: train
   validation_split: validation
+test_dataset:
+  use_tfds: true
+  tfds_name: wmt15_translate/ru-en
+  split: test
+  max_samples: null
 vocabs:
   ru_token_to_id: ${data.tokenizer_dir}/ru-vocab/ru_token_to_id.json
   ru_id_to_token: ${data.tokenizer_dir}/ru-vocab/ru_id_to_token.json

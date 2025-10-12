@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 import json
 import random
 
-from models.data.dataset import BilingualTranslationDataset, load_hf_dataset
+from models.data.dataset import BilingualTranslationDataset
 from models.transformer.transformer import TransformerWithNewTechniques
 from tokenizer.tokenizer import Tokenizer
 
@@ -36,19 +36,67 @@ def calculate_bleu(prediction: str, reference: str) -> float:
     return sentence_bleu([ref_tokens], pred_tokens, smoothing_function=SmoothingFunction().method1)
 
 
-def create_test_dataset(cfg: DictConfig, tokenizer, dataset):
-    print("Creating test dataset from training split...")
-    
-    train_data = dataset[cfg.dataset.train_split]
-    test_size = min(20000, len(train_data))
-    
-    indices = list(range(len(train_data)))
-    random.seed(42)
-    random.shuffle(indices)
-    test_indices = indices[:test_size]
-    
-    test_data = train_data.select(test_indices)
-    test_dataset_dict = {"test": test_data}
+def create_test_dataset(cfg: DictConfig, tokenizer):
+    if cfg.test_dataset.use_tfds:
+        print(f"Loading test dataset from TensorFlow Datasets: {cfg.test_dataset.tfds_name}...")
+        import tensorflow_datasets as tfds
+        
+        ds_test = tfds.load(
+            cfg.test_dataset.tfds_name,
+            split=cfg.test_dataset.split,
+            as_supervised=True,
+            shuffle_files=False
+        )
+        
+        test_examples = []
+        for src, tgt in ds_test:
+            src_text = src.numpy().decode('utf-8')
+            tgt_text = tgt.numpy().decode('utf-8')
+            test_examples.append({
+                'translation': {
+                    cfg.language.src_lang: src_text,
+                    cfg.language.tgt_lang: tgt_text
+                }
+            })
+        
+        if cfg.test_dataset.max_samples and cfg.test_dataset.max_samples != "null":
+            max_samples = int(cfg.test_dataset.max_samples)
+            if len(test_examples) > max_samples:
+                random.seed(42)
+                random.shuffle(test_examples)
+                test_examples = test_examples[:max_samples]
+        
+        print(f"Test dataset loaded: {len(test_examples)} examples")
+        
+        from datasets import Dataset
+        test_data = Dataset.from_list(test_examples)
+        test_dataset_dict = {"test": test_data}
+    else:
+        print(f"Loading test dataset from HuggingFace: {cfg.test_dataset.name}...")
+        from datasets import load_dataset
+        
+        if cfg.test_dataset.config_name and cfg.test_dataset.config_name != "null":
+            test_data = load_dataset(
+                cfg.test_dataset.name,
+                cfg.test_dataset.config_name,
+                split=cfg.test_dataset.split
+            )
+        else:
+            test_data = load_dataset(
+                cfg.test_dataset.name,
+                split=cfg.test_dataset.split
+            )
+        
+        if cfg.test_dataset.max_samples and cfg.test_dataset.max_samples != "null":
+            max_samples = int(cfg.test_dataset.max_samples)
+            if len(test_data) > max_samples:
+                indices = list(range(len(test_data)))
+                random.seed(42)
+                random.shuffle(indices)
+                test_data = test_data.select(indices[:max_samples])
+        
+        print(f"Test dataset loaded: {len(test_data)} examples")
+        test_dataset_dict = {"test": test_data}
     
     test_dataset = BilingualTranslationDataset(
         test_dataset_dict,
@@ -67,7 +115,6 @@ def create_test_dataset(cfg: DictConfig, tokenizer, dataset):
         num_workers=getattr(cfg.training, 'num_workers', 0)
     )
     
-    print(f"Test dataset size: {len(test_dataset)} (randomly sampled from training set)")
     return test_loader
 
 
@@ -305,10 +352,7 @@ def test_model(cfg: DictConfig):
         'en_id_to_token': cfg.vocabs.en_id_to_token
     })
     
-    print("\nLoading dataset...")
-    dataset = load_hf_dataset(cfg)
-    
-    test_loader = create_test_dataset(cfg, tokenizer, dataset)
+    test_loader = create_test_dataset(cfg, tokenizer)
     
     checkpoint_path = Path(cfg.data.model_weights)
     if not checkpoint_path.exists():
