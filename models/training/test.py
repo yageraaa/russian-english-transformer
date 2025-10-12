@@ -10,6 +10,7 @@ import re
 import numpy as np
 from typing import Dict, List, Tuple
 import json
+import random
 
 from models.data.dataset import BilingualTranslationDataset, load_hf_dataset
 from models.transformer.transformer import TransformerWithNewTechniques
@@ -36,22 +37,18 @@ def calculate_bleu(prediction: str, reference: str) -> float:
 
 
 def create_test_dataset(cfg: DictConfig, tokenizer, dataset):
-    print("Creating test dataset from validation split...")
+    print("Creating test dataset from training split...")
     
-    try:
-        from datasets import load_dataset
-        test_data = load_dataset(
-            cfg.dataset.name,
-            cfg.dataset.config_name,
-            split="test[:1000]"
-        )
-        test_dataset_dict = {"test": test_data}
-    except:
-        print("Test split not available, using validation split...")
-        val_data = dataset[cfg.dataset.validation_split]
-        test_size = min(1000, len(val_data))
-        test_data = val_data.select(range(len(val_data) - test_size, len(val_data)))
-        test_dataset_dict = {"test": test_data}
+    train_data = dataset[cfg.dataset.train_split]
+    test_size = min(20000, len(train_data))
+    
+    indices = list(range(len(train_data)))
+    random.seed(42)
+    random.shuffle(indices)
+    test_indices = indices[:test_size]
+    
+    test_data = train_data.select(test_indices)
+    test_dataset_dict = {"test": test_data}
     
     test_dataset = BilingualTranslationDataset(
         test_dataset_dict,
@@ -70,7 +67,7 @@ def create_test_dataset(cfg: DictConfig, tokenizer, dataset):
         num_workers=getattr(cfg.training, 'num_workers', 0)
     )
     
-    print(f"Test dataset size: {len(test_dataset)}")
+    print(f"Test dataset size: {len(test_dataset)} (randomly sampled from training set)")
     return test_loader
 
 
@@ -267,10 +264,30 @@ def save_test_results(results: Dict, cfg: DictConfig, output_path: str):
             f.write(f"  Prediction (EN): {pred_data['prediction']}\n")
             f.write(f"  BLEU Score:      {pred_data['bleu_score']:.2f}\n\n")
     
+    root_report_path = Path("test_results.txt")
+    with open(root_report_path, 'w', encoding='utf-8') as f:
+        f.write("="*80 + "\n")
+        f.write("MODEL TEST REPORT\n")
+        f.write("="*80 + "\n\n")
+        f.write(f"Average Loss: {results['average_loss']:.4f}\n")
+        f.write(f"Average BLEU Score: {results['average_bleu']:.2f}\n")
+        f.write(f"Total Samples: {results['total_samples']}\n\n")
+        f.write("="*80 + "\n")
+        f.write("SAMPLE TRANSLATIONS (first 50 examples)\n")
+        f.write("="*80 + "\n\n")
+        
+        for i, pred_data in enumerate(predictions_data[:50]):
+            f.write(f"Example {i + 1}:\n")
+            f.write(f"  Source (RU):     {pred_data['source']}\n")
+            f.write(f"  Reference (EN):  {pred_data['reference']}\n")
+            f.write(f"  Prediction (EN): {pred_data['prediction']}\n")
+            f.write(f"  BLEU Score:      {pred_data['bleu_score']:.2f}\n\n")
+    
     print(f"Results saved:")
     print(f"  - Metrics: {output_path.replace('.json', '_metrics.json')}")
     print(f"  - Predictions: {output_path}")
     print(f"  - Report: {report_path}")
+    print(f"  - Root Report: {root_report_path.absolute()}")
 
 
 @hydra.main(config_path="../../models/configs", config_name="config", version_base="1.2")
