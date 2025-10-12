@@ -6,7 +6,7 @@ data:
   data_dir: ${data.base_dir}/models/data
   tokenizer_dir: ${data.base_dir}/tokenizer/vocabs
   model_dir: ${data.base_dir}/checkpoints
-  model_weights: ${data.model_dir}/transformer_00.pt
+  model_weights: ${data.model_dir}/transformer_latest.pt
   log_dir: ${data.base_dir}/logs
 training:
   batch_size: 224
