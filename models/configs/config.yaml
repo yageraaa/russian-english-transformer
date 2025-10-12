@@ -36,8 +36,9 @@ dataset:
   train_split: train
   validation_split: validation
 test_dataset:
-  use_tfds: true
-  tfds_name: wmt15_translate/ru-en
+  use_tfds: false
+  name: opus100
+  config_name: en-ru
   split: test
   max_samples: null
 vocabs:
