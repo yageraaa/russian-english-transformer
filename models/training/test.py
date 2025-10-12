@@ -16,16 +16,6 @@ from models.transformer.transformer import TransformerWithNewTechniques
 from tokenizer.tokenizer import Tokenizer
 
 
-def decode_until_end(ids, id_to_token, end_token="<end>"):
-    tokens = []
-    for idx in ids:
-        token = id_to_token.get(idx, '<unk>')
-        if token == end_token:
-            break
-        tokens.append(token)
-    return " ".join(tokens)
-
-
 def calculate_bleu(prediction: str, reference: str) -> float:
     def normalize_text(text):
         text = text.lower()
@@ -162,15 +152,14 @@ def run_test(model, test_loader, device, loss_fn, tokenizer, cfg) -> Dict:
                 )
                 
                 for i in range(translated.size(0)):
-                    pred = decode_until_end(
+                    pred = tokenizer.decode_ids(
                         translated[i].cpu().numpy(),
-                        tokenizer.en_id_to_token,
-                        end_token="<end>"
+                        tokenizer.en_id_to_token
                     )
                     ref = batch['tgt_text'][i]
                     src = batch['src_text'][i]
                     
-                    bleu_score = calculate_bleu(pred, ref)
+                    bleu_score = calculate_bleu(pred, ref) * 100
                     total_bleu += bleu_score
                     total_samples += 1
                     
@@ -180,7 +169,7 @@ def run_test(model, test_loader, device, loss_fn, tokenizer, cfg) -> Dict:
                 
                 test_iterator.set_postfix(
                     loss=f"{loss:.4f}",
-                    bleu=f"{total_bleu/total_samples:.4f}",
+                    bleu=f"{total_bleu/total_samples:.2f}",
                     samples=total_samples
                 )
                 
@@ -208,7 +197,7 @@ def print_test_results(results: Dict, cfg: DictConfig, num_examples: int = 10):
     print("TEST RESULTS")
     print("="*80)
     print(f"\nAverage Loss: {results['average_loss']:.4f}")
-    print(f"Average BLEU Score: {results['average_bleu']:.4f}")
+    print(f"Average BLEU Score: {results['average_bleu']:.2f}")
     print(f"Total Samples: {results['total_samples']}")
     
     print("\n" + "="*80)
@@ -222,13 +211,13 @@ def print_test_results(results: Dict, cfg: DictConfig, num_examples: int = 10):
         src = results['sources'][i]
         ref = results['references'][i]
         pred = results['predictions'][i]
-        bleu = calculate_bleu(pred, ref)
+        bleu = calculate_bleu(pred, ref) * 100
         
         print(f"Example {idx + 1}:")
         print(f"  Source (RU):     {src}")
         print(f"  Reference (EN):  {ref}")
         print(f"  Prediction (EN): {pred}")
-        print(f"  BLEU Score:      {bleu:.4f}")
+        print(f"  BLEU Score:      {bleu:.2f}")
         print()
 
 
@@ -253,7 +242,7 @@ def save_test_results(results: Dict, cfg: DictConfig, output_path: str):
             "source": results['sources'][i],
             "reference": results['references'][i],
             "prediction": results['predictions'][i],
-            "bleu_score": calculate_bleu(results['predictions'][i], results['references'][i])
+            "bleu_score": calculate_bleu(results['predictions'][i], results['references'][i]) * 100
         })
     
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -265,7 +254,7 @@ def save_test_results(results: Dict, cfg: DictConfig, output_path: str):
         f.write("MODEL TEST REPORT\n")
         f.write("="*80 + "\n\n")
         f.write(f"Average Loss: {results['average_loss']:.4f}\n")
-        f.write(f"Average BLEU Score: {results['average_bleu']:.4f}\n")
+        f.write(f"Average BLEU Score: {results['average_bleu']:.2f}\n")
         f.write(f"Total Samples: {results['total_samples']}\n\n")
         f.write("="*80 + "\n")
         f.write("SAMPLE TRANSLATIONS\n")
@@ -276,7 +265,7 @@ def save_test_results(results: Dict, cfg: DictConfig, output_path: str):
             f.write(f"  Source (RU):     {pred_data['source']}\n")
             f.write(f"  Reference (EN):  {pred_data['reference']}\n")
             f.write(f"  Prediction (EN): {pred_data['prediction']}\n")
-            f.write(f"  BLEU Score:      {pred_data['bleu_score']:.4f}\n\n")
+            f.write(f"  BLEU Score:      {pred_data['bleu_score']:.2f}\n\n")
     
     print(f"Results saved:")
     print(f"  - Metrics: {output_path.replace('.json', '_metrics.json')}")
