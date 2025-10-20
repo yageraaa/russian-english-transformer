@@ -5,19 +5,28 @@ from api.backend.settings import settings
 
 class S3:
     def __init__(self):
-        self.session = boto3.session.Session(
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_REGION
-        )
-        self.s3client = self.session.client(
-            service_name='s3',
-            endpoint_url=settings.AWS_ENDPOINT_URL,
-            config=botocore.client.Config(signature_version='s3v4')
-        )
-        self.create_bucket(settings.AWS_BUCKET)
+        self.s3client = None
+        self.connected = False
+        try:
+            self.session = boto3.session.Session(
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                region_name=settings.AWS_REGION
+            )
+            self.s3client = self.session.client(
+                service_name='s3',
+                endpoint_url=settings.AWS_ENDPOINT_URL,
+                config=botocore.client.Config(signature_version='s3v4')
+            )
+            self.create_bucket(settings.AWS_BUCKET)
+            self.connected = True
+        except Exception as e:
+            logging.warning(f"S3 connection failed: {e}. Running without S3 storage.")
+            self.connected = False
 
     def has_file(self, fileid: str):
+        if not self.connected:
+            return False
         try:
             self.s3client.head_object(Bucket=settings.AWS_BUCKET, Key=fileid)
             return True
@@ -25,6 +34,9 @@ class S3:
             return False
 
     def upload_file(self, file, fileid: str):
+        if not self.connected:
+            logging.warning("S3 not connected, file upload skipped")
+            return
         try:
             self.s3client.upload_fileobj(file, settings.AWS_BUCKET, fileid)
             logging.info(f"Файл загружен в S3: {fileid}")
@@ -33,6 +45,9 @@ class S3:
             raise
 
     def download_file(self, file, fileid: str):
+        if not self.connected:
+            logging.warning("S3 not connected, file download failed")
+            raise FileNotFoundError("S3 not connected")
         try:
             self.s3client.head_object(Bucket=settings.AWS_BUCKET, Key=fileid)
             self.s3client.download_fileobj(settings.AWS_BUCKET, fileid, file)
@@ -43,6 +58,9 @@ class S3:
             raise FileNotFoundError("File not found")
 
     def delete_file(self, fileid: str):
+        if not self.connected:
+            logging.warning("S3 not connected, file deletion skipped")
+            return
         try:
             self.s3client.delete_object(Bucket=settings.AWS_BUCKET, Key=fileid)
             logging.info(f"Файл удалён из S3: {fileid}")
@@ -51,6 +69,8 @@ class S3:
             raise
 
     def create_bucket(self, name):
+        if not self.s3client:
+            return
         try:
             try:
                 self.s3client.head_bucket(Bucket=name)
@@ -65,6 +85,9 @@ class S3:
             raise
 
     def generate_link(self, bucket, key):
+        if not self.connected:
+            logging.warning("S3 not connected, link generation failed")
+            return None
         try:
             url = self.s3client.generate_presigned_url(
                 ClientMethod='get_object',

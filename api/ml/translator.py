@@ -35,7 +35,7 @@ model = TransformerWithNewTechniques(
     d_ff=cfg.model.d_ff
 ).to(device)
 
-checkpoint = torch.load(model_weights_path, map_location=device)
+checkpoint = torch.load(model_weights_path, map_location=device, weights_only=False)
 state_dict = checkpoint.get("model_state_dict", checkpoint)
 model.load_state_dict(state_dict)
 model.eval()

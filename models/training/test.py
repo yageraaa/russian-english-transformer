@@ -11,6 +11,7 @@ import numpy as np
 from typing import Dict, List, Tuple
 import json
 import random
+import time
 
 from models.data.dataset import BilingualTranslationDataset
 from models.transformer.transformer import TransformerWithNewTechniques
@@ -40,14 +41,14 @@ def create_test_dataset(cfg: DictConfig, tokenizer):
     if cfg.test_dataset.use_tfds:
         print(f"Loading test dataset from TensorFlow Datasets: {cfg.test_dataset.tfds_name}...")
         import tensorflow_datasets as tfds
-        
+
         ds_test = tfds.load(
             cfg.test_dataset.tfds_name,
             split=cfg.test_dataset.split,
             as_supervised=True,
             shuffle_files=False
         )
-        
+
         test_examples = []
         for src, tgt in ds_test:
             src_text = src.numpy().decode('utf-8')
@@ -58,23 +59,23 @@ def create_test_dataset(cfg: DictConfig, tokenizer):
                     cfg.language.tgt_lang: tgt_text
                 }
             })
-        
+
         if cfg.test_dataset.max_samples and cfg.test_dataset.max_samples != "null":
             max_samples = int(cfg.test_dataset.max_samples)
             if len(test_examples) > max_samples:
                 random.seed(42)
                 random.shuffle(test_examples)
                 test_examples = test_examples[:max_samples]
-        
+
         print(f"Test dataset loaded: {len(test_examples)} examples")
-        
+
         from datasets import Dataset
         test_data = Dataset.from_list(test_examples)
         test_dataset_dict = {"test": test_data}
     else:
         print(f"Loading test dataset from HuggingFace: {cfg.test_dataset.name}...")
         from datasets import load_dataset
-        
+
         if cfg.test_dataset.config_name and cfg.test_dataset.config_name != "null":
             test_data = load_dataset(
                 cfg.test_dataset.name,
@@ -86,7 +87,7 @@ def create_test_dataset(cfg: DictConfig, tokenizer):
                 cfg.test_dataset.name,
                 split=cfg.test_dataset.split
             )
-        
+
         if cfg.test_dataset.max_samples and cfg.test_dataset.max_samples != "null":
             max_samples = int(cfg.test_dataset.max_samples)
             if len(test_data) > max_samples:
@@ -94,10 +95,10 @@ def create_test_dataset(cfg: DictConfig, tokenizer):
                 random.seed(42)
                 random.shuffle(indices)
                 test_data = test_data.select(indices[:max_samples])
-        
+
         print(f"Test dataset loaded: {len(test_data)} examples")
         test_dataset_dict = {"test": test_data}
-    
+
     test_dataset = BilingualTranslationDataset(
         test_dataset_dict,
         tokenizer,
@@ -106,7 +107,7 @@ def create_test_dataset(cfg: DictConfig, tokenizer):
         cfg.training.seq_len,
         split="test"
     )
-    
+
     test_loader = DataLoader(
         test_dataset,
         batch_size=cfg.training.batch_size,
@@ -114,13 +115,13 @@ def create_test_dataset(cfg: DictConfig, tokenizer):
         pin_memory=True,
         num_workers=getattr(cfg.training, 'num_workers', 0)
     )
-    
+
     return test_loader
 
 
 def load_model_from_checkpoint(cfg: DictConfig, tokenizer, checkpoint_path: str, device):
     print(f"Loading model from checkpoint: {checkpoint_path}")
-    
+
     model = TransformerWithNewTechniques(
         src_vocab_size=len(tokenizer.ru_token_to_id),
         tgt_vocab_size=len(tokenizer.en_token_to_id),
@@ -132,9 +133,9 @@ def load_model_from_checkpoint(cfg: DictConfig, tokenizer, checkpoint_path: str,
         dropout=cfg.training.dropout,
         d_ff=cfg.model.d_ff
     ).to(device)
-    
+
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    
+
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         model.load_state_dict(checkpoint["model_state_dict"])
         epoch = checkpoint.get("epoch", "unknown")
@@ -143,16 +144,16 @@ def load_model_from_checkpoint(cfg: DictConfig, tokenizer, checkpoint_path: str,
     else:
         model.load_state_dict(checkpoint)
         print("Checkpoint loaded (no metadata found)")
-    
+
     model.eval()
     return model
 
 
 def run_test(model, test_loader, device, loss_fn, tokenizer, cfg) -> Dict:
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("Starting model testing...")
-    print("="*80 + "\n")
-    
+    print("=" * 80 + "\n")
+
     model.eval()
     total_loss = 0
     total_bleu = 0
@@ -160,18 +161,21 @@ def run_test(model, test_loader, device, loss_fn, tokenizer, cfg) -> Dict:
     all_predictions = []
     all_references = []
     all_sources = []
-    
+
+    total_translation_time = 0.0
+    total_batches = 0
+
     test_iterator = tqdm(
         enumerate(test_loader),
         desc="Testing",
         total=len(test_loader)
     )
-    
+
     with torch.no_grad():
         for batch_idx, batch in test_iterator:
             try:
                 inputs = {k: v.to(device) for k, v in batch.items() if k not in ['src_text', 'tgt_text']}
-                
+
                 encoder_output = model.encode(inputs['encoder_input'], inputs['encoder_mask'])
                 decoder_output = model.decode(
                     encoder_output,
@@ -180,21 +184,25 @@ def run_test(model, test_loader, device, loss_fn, tokenizer, cfg) -> Dict:
                     inputs['decoder_mask']
                 )
                 proj_output = model.project(decoder_output)
-                
+
                 loss = loss_fn(
                     proj_output.view(-1, len(tokenizer.en_token_to_id)),
                     inputs['label'].view(-1)
                 ).item()
-                
+
                 total_loss += loss
-                
+
+                start_time = time.time()
                 translated = model.translate_batch(
                     inputs['encoder_input'],
                     max_len=cfg.training.seq_len,
                     start_token_id=tokenizer.en_token_to_id['<start>'],
                     end_token_id=tokenizer.en_token_to_id['<end>']
                 )
-                
+                translation_time = time.time() - start_time
+                total_translation_time += translation_time
+                total_batches += 1
+
                 for i in range(translated.size(0)):
                     pred = tokenizer.decode_ids(
                         translated[i].cpu().numpy(),
@@ -202,61 +210,82 @@ def run_test(model, test_loader, device, loss_fn, tokenizer, cfg) -> Dict:
                     )
                     ref = batch['tgt_text'][i]
                     src = batch['src_text'][i]
-                    
+
                     bleu_score = calculate_bleu(pred, ref) * 100
                     total_bleu += bleu_score
                     total_samples += 1
-                    
+
                     all_predictions.append(pred)
                     all_references.append(ref)
                     all_sources.append(src)
-                
+
+                avg_response_time = total_translation_time / total_batches if total_batches > 0 else 0
+                avg_time_per_sample = total_translation_time / total_samples if total_samples > 0 else 0
+
                 test_iterator.set_postfix(
                     loss=f"{loss:.4f}",
-                    bleu=f"{total_bleu/total_samples:.2f}",
-                    samples=total_samples
+                    bleu=f"{total_bleu / total_samples:.2f}",
+                    samples=total_samples,
+                    avg_time=f"{avg_response_time:.3f}s"
                 )
-                
+
             except Exception as e:
                 print(f"\nError in test batch {batch_idx}: {e}")
                 continue
-    
+
     avg_loss = total_loss / len(test_loader) if len(test_loader) > 0 else 0
     avg_bleu = total_bleu / total_samples if total_samples > 0 else 0
-    
+
+    avg_batch_time = total_translation_time / total_batches if total_batches > 0 else 0
+    avg_sample_time = total_translation_time / total_samples if total_samples > 0 else 0
+
     results = {
         "average_loss": avg_loss,
         "average_bleu": avg_bleu,
         "total_samples": total_samples,
         "predictions": all_predictions,
         "references": all_references,
-        "sources": all_sources
+        "sources": all_sources,
+        "total_translation_time_seconds": total_translation_time,
+        "average_batch_time_seconds": avg_batch_time,
+        "average_sample_time_seconds": avg_sample_time,
+        "batches_processed": total_batches
     }
-    
+
     return results
 
 
 def print_test_results(results: Dict, cfg: DictConfig, num_examples: int = 10):
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST RESULTS")
-    print("="*80)
+    print("=" * 80)
     print(f"\nAverage Loss: {results['average_loss']:.4f}")
     print(f"Average BLEU Score: {results['average_bleu']:.2f}")
     print(f"Total Samples: {results['total_samples']}")
-    
-    print("\n" + "="*80)
+
+    print(f"\n--- PERFORMANCE METRICS ---")
+    print(f"Total Translation Time: {results['total_translation_time_seconds']:.2f} seconds")
+    print(f"Average Batch Time: {results['average_batch_time_seconds']:.3f} seconds")
+    print(f"Average Time per Sample: {results['average_sample_time_seconds']:.3f} seconds")
+    print(f"Batches Processed: {results['batches_processed']}")
+
+    if results['total_translation_time_seconds'] > 0:
+        samples_per_second = results['total_samples'] / results['total_translation_time_seconds']
+        print(f"Processing Speed: {samples_per_second:.2f} samples/second")
+
+    print("\n" + "=" * 80)
     print(f"EXAMPLE TRANSLATIONS (showing {num_examples} examples)")
-    print("="*80 + "\n")
-    
+    print("=" * 80 + "\n")
+
     num_to_show = min(num_examples, len(results['predictions']))
     indices = np.linspace(0, len(results['predictions']) - 1, num_to_show, dtype=int)
-    
+
     for idx, i in enumerate(indices):
         src = results['sources'][i]
         ref = results['references'][i]
         pred = results['predictions'][i]
         bleu = calculate_bleu(pred, ref) * 100
-        
+
         print(f"Example {idx + 1}:")
         print(f"  Source (RU):     {src}")
         print(f"  Reference (EN):  {ref}")
@@ -267,19 +296,26 @@ def print_test_results(results: Dict, cfg: DictConfig, num_examples: int = 10):
 
 def save_test_results(results: Dict, cfg: DictConfig, output_path: str):
     print(f"\nSaving test results to {output_path}...")
-    
+
     output_dir = Path(output_path).parent
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     metrics = {
         "average_loss": results['average_loss'],
         "average_bleu": results['average_bleu'],
-        "total_samples": results['total_samples']
+        "total_samples": results['total_samples'],
+        "total_translation_time_seconds": results['total_translation_time_seconds'],
+        "average_batch_time_seconds": results['average_batch_time_seconds'],
+        "average_sample_time_seconds": results['average_sample_time_seconds'],
+        "batches_processed": results['batches_processed']
     }
-    
+
+    if results['total_translation_time_seconds'] > 0:
+        metrics["samples_per_second"] = results['total_samples'] / results['total_translation_time_seconds']
+
     with open(output_path.replace('.json', '_metrics.json'), 'w', encoding='utf-8') as f:
         json.dump(metrics, f, indent=2, ensure_ascii=False)
-    
+
     predictions_data = []
     for i in range(len(results['predictions'])):
         predictions_data.append({
@@ -288,48 +324,70 @@ def save_test_results(results: Dict, cfg: DictConfig, output_path: str):
             "prediction": results['predictions'][i],
             "bleu_score": calculate_bleu(results['predictions'][i], results['references'][i]) * 100
         })
-    
+
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(predictions_data, f, indent=2, ensure_ascii=False)
-    
+
     report_path = output_path.replace('.json', '_report.txt')
     with open(report_path, 'w', encoding='utf-8') as f:
-        f.write("="*80 + "\n")
+        f.write("=" * 80 + "\n")
         f.write("MODEL TEST REPORT\n")
-        f.write("="*80 + "\n\n")
+        f.write("=" * 80 + "\n\n")
         f.write(f"Average Loss: {results['average_loss']:.4f}\n")
         f.write(f"Average BLEU Score: {results['average_bleu']:.2f}\n")
         f.write(f"Total Samples: {results['total_samples']}\n\n")
-        f.write("="*80 + "\n")
+
+        f.write("--- PERFORMANCE METRICS ---\n")
+        f.write(f"Total Translation Time: {results['total_translation_time_seconds']:.2f} seconds\n")
+        f.write(f"Average Batch Time: {results['average_batch_time_seconds']:.3f} seconds\n")
+        f.write(f"Average Time per Sample: {results['average_sample_time_seconds']:.3f} seconds\n")
+        f.write(f"Batches Processed: {results['batches_processed']}\n")
+        if results['total_translation_time_seconds'] > 0:
+            samples_per_second = results['total_samples'] / results['total_translation_time_seconds']
+            f.write(f"Processing Speed: {samples_per_second:.2f} samples/second\n")
+        f.write("\n")
+
+        f.write("=" * 80 + "\n")
         f.write("SAMPLE TRANSLATIONS\n")
-        f.write("="*80 + "\n\n")
-        
+        f.write("=" * 80 + "\n\n")
+
         for i, pred_data in enumerate(predictions_data[:20]):
             f.write(f"Example {i + 1}:\n")
             f.write(f"  Source (RU):     {pred_data['source']}\n")
             f.write(f"  Reference (EN):  {pred_data['reference']}\n")
             f.write(f"  Prediction (EN): {pred_data['prediction']}\n")
             f.write(f"  BLEU Score:      {pred_data['bleu_score']:.2f}\n\n")
-    
+
     root_report_path = Path("test_results.txt")
     with open(root_report_path, 'w', encoding='utf-8') as f:
-        f.write("="*80 + "\n")
+        f.write("=" * 80 + "\n")
         f.write("MODEL TEST REPORT\n")
-        f.write("="*80 + "\n\n")
+        f.write("=" * 80 + "\n\n")
         f.write(f"Average Loss: {results['average_loss']:.4f}\n")
         f.write(f"Average BLEU Score: {results['average_bleu']:.2f}\n")
         f.write(f"Total Samples: {results['total_samples']}\n\n")
-        f.write("="*80 + "\n")
+
+        f.write("--- PERFORMANCE METRICS ---\n")
+        f.write(f"Total Translation Time: {results['total_translation_time_seconds']:.2f} seconds\n")
+        f.write(f"Average Batch Time: {results['average_batch_time_seconds']:.3f} seconds\n")
+        f.write(f"Average Time per Sample: {results['average_sample_time_seconds']:.3f} seconds\n")
+        f.write(f"Batches Processed: {results['batches_processed']}\n")
+        if results['total_translation_time_seconds'] > 0:
+            samples_per_second = results['total_samples'] / results['total_translation_time_seconds']
+            f.write(f"Processing Speed: {samples_per_second:.2f} samples/second\n")
+        f.write("\n")
+
+        f.write("=" * 80 + "\n")
         f.write("SAMPLE TRANSLATIONS (first 50 examples)\n")
-        f.write("="*80 + "\n\n")
-        
+        f.write("=" * 80 + "\n\n")
+
         for i, pred_data in enumerate(predictions_data[:50]):
             f.write(f"Example {i + 1}:\n")
             f.write(f"  Source (RU):     {pred_data['source']}\n")
             f.write(f"  Reference (EN):  {pred_data['reference']}\n")
             f.write(f"  Prediction (EN): {pred_data['prediction']}\n")
             f.write(f"  BLEU Score:      {pred_data['bleu_score']:.2f}\n\n")
-    
+
     print(f"Results saved:")
     print(f"  - Metrics: {output_path.replace('.json', '_metrics.json')}")
     print(f"  - Predictions: {output_path}")
@@ -343,7 +401,7 @@ def test_model(cfg: DictConfig):
     print(f"Using device: {device}")
     if torch.cuda.is_available():
         print(f"GPU: {torch.cuda.get_device_name(0)}")
-    
+
     print("\nLoading tokenizer...")
     tokenizer = Tokenizer({
         'ru_token_to_id': cfg.vocabs.ru_token_to_id,
@@ -351,36 +409,36 @@ def test_model(cfg: DictConfig):
         'en_token_to_id': cfg.vocabs.en_token_to_id,
         'en_id_to_token': cfg.vocabs.en_id_to_token
     })
-    
+
     test_loader = create_test_dataset(cfg, tokenizer)
-    
+
     checkpoint_path = Path(cfg.data.model_weights)
     if not checkpoint_path.exists():
         alt_checkpoint = Path("checkpoints/transformer_latest.pt")
         if alt_checkpoint.exists():
             checkpoint_path = alt_checkpoint
         else:
-            raise FileNotFoundError(f"Checkpoint not found at {cfg.data.model_weights} or checkpoints/transformer_latest.pt")
-    
+            raise FileNotFoundError(
+                f"Checkpoint not found at {cfg.data.model_weights} or checkpoints/transformer_latest.pt")
+
     model = load_model_from_checkpoint(cfg, tokenizer, str(checkpoint_path), device)
-    
+
     loss_fn = nn.CrossEntropyLoss(
         ignore_index=tokenizer.en_token_to_id['<pad>'],
         label_smoothing=0.1
     )
-    
+
     results = run_test(model, test_loader, device, loss_fn, tokenizer, cfg)
-    
+
     print_test_results(results, cfg, num_examples=15)
-    
+
     output_path = Path(cfg.data.log_dir) / "test_results.json"
     save_test_results(results, cfg, str(output_path))
-    
-    print("\n" + "="*80)
+
+    print("\n" + "=" * 80)
     print("Testing completed successfully!")
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
 
 
 if __name__ == "__main__":
     test_model()
-
