@@ -11,7 +11,7 @@ from pathlib import Path
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from accelerate import Accelerator
 from models.data.dataset import BilingualTranslationDataset, load_hf_dataset
-from models.transformer.transformer import TransformerWithNewTechniques
+from models.transformer.transformer import TransformerWithNewTechniques, TransformerBaseline
 from tokenizer.tokenizer import Tokenizer
 from typing import Optional
 import signal
@@ -54,17 +54,34 @@ def train_model(cfg: DictConfig):
         for i in range(torch.cuda.device_count()):
             accelerator.print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
 
-    model = TransformerWithNewTechniques(
-        src_vocab_size=len(tokenizer.ru_token_to_id),
-        tgt_vocab_size=len(tokenizer.en_token_to_id),
-        src_seq_len=cfg.training.seq_len,
-        tgt_seq_len=cfg.training.seq_len,
-        d_model=cfg.model.d_model,
-        num_layers=cfg.model.num_layers,
-        num_heads=cfg.model.num_heads,
-        dropout=cfg.training.dropout,
-        d_ff=cfg.model.d_ff
-    )
+    use_baseline = getattr(cfg.model, 'use_baseline', True)
+    
+    if use_baseline:
+        accelerator.print("Using baseline transformer")
+        model = TransformerBaseline(
+            src_vocab_size=len(tokenizer.ru_token_to_id),
+            tgt_vocab_size=len(tokenizer.en_token_to_id),
+            src_seq_len=cfg.training.seq_len,
+            tgt_seq_len=cfg.training.seq_len,
+            d_model=cfg.model.d_model,
+            num_layers=cfg.model.num_layers,
+            num_heads=cfg.model.num_heads,
+            dropout=cfg.training.dropout,
+            d_ff=cfg.model.d_ff
+        )
+    else:
+        accelerator.print("Using transformer with new techniques")
+        model = TransformerWithNewTechniques(
+            src_vocab_size=len(tokenizer.ru_token_to_id),
+            tgt_vocab_size=len(tokenizer.en_token_to_id),
+            src_seq_len=cfg.training.seq_len,
+            tgt_seq_len=cfg.training.seq_len,
+            d_model=cfg.model.d_model,
+            num_layers=cfg.model.num_layers,
+            num_heads=cfg.model.num_heads,
+            dropout=cfg.training.dropout,
+            d_ff=cfg.model.d_ff
+        )
 
     if cfg.training.use_pretrained_decoder and Path(cfg.data.decoder_weights).exists():
         accelerator.print(f"Loading pretrained decoder weights from {cfg.data.decoder_weights}...")

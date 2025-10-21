@@ -27,6 +27,7 @@ model:
   num_heads: 8
   num_layers: 6
   d_ff: 2048
+  use_baseline: true
 language:
   src_lang: ru
   tgt_lang: en

@@ -4,8 +4,79 @@ from torchinfo import summary
 from models.core.embeddings import InputEmbeddings
 from models.core.positional_encoding import PositionalEncoding
 from models.core.linear_layer import ProjectionLayer
-from models.transformer.decoder import DecoderWithNewTechniques
-from models.transformer.encoder import EncoderWithNewTechniques
+from models.transformer.decoder import DecoderWithNewTechniques, DecoderBaseline
+from models.transformer.encoder import EncoderWithNewTechniques, EncoderBaseline
+
+
+class TransformerBaseline(nn.Module):
+    def __init__(self, src_vocab_size, tgt_vocab_size, src_seq_len, tgt_seq_len,
+                 d_model=512, num_layers=6, num_heads=8, dropout=0.1, d_ff=2048):
+        super().__init__()
+        self.src_embed = InputEmbeddings(d_model, src_vocab_size)
+        self.tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
+        self.src_pos = PositionalEncoding(d_model, src_seq_len)
+        self.tgt_pos = PositionalEncoding(d_model, tgt_seq_len)
+        self.encoder = EncoderBaseline(d_model, num_layers, num_heads, d_ff, dropout)
+        self.decoder = DecoderBaseline(d_model, num_layers, num_heads, d_ff, dropout)
+        self.projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
+        self._init_weights()
+
+    def _init_weights(self):
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+        
+        nn.init.normal_(self.src_embed.embedding.weight, mean=0, std=0.02)
+        nn.init.normal_(self.tgt_embed.embedding.weight, mean=0, std=0.02)
+        
+        nn.init.normal_(self.projection_layer.proj.weight, mean=0, std=0.02)
+        nn.init.zeros_(self.projection_layer.proj.bias)
+
+    def encode(self, src, src_mask):
+        if src_mask is not None and src_mask.dim() == 3:
+            src_mask = src_mask.unsqueeze(1)
+
+        src = self.src_pos(self.src_embed(src))
+        return self.encoder(src, src_mask)
+
+    def decode(self, encoder_output, src_mask, tgt, tgt_mask):
+        if src_mask is not None and src_mask.dim() == 3:
+            src_mask = src_mask.unsqueeze(1)
+        if tgt_mask is not None and tgt_mask.dim() == 3:
+            tgt_mask = tgt_mask.unsqueeze(1)
+
+        tgt = self.tgt_pos(self.tgt_embed(tgt))
+        return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
+
+    def project(self, x):
+        return self.projection_layer(x)
+
+    def generate_square_subsequent_mask(self, size, device):
+        mask = torch.tril(torch.ones(size, size, device=device))
+        return mask.unsqueeze(0).unsqueeze(0)
+
+    def translate_batch(self, src, max_len=100, start_token_id=0, end_token_id=1):
+        batch_size, device = src.size(0), src.device
+        src_mask = torch.ones(batch_size, 1, 1, src.size(1), device=device).bool()
+        encoder_output = self.encode(src, src_mask)
+        tgt = torch.full((batch_size, 1), start_token_id, dtype=torch.long, device=device)
+        finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+
+        max_len = min(max_len, self.tgt_pos.encoding.size(1))
+
+        for _ in range(max_len):
+            tgt_mask = self.generate_square_subsequent_mask(tgt.size(1), device=device)
+
+            decoder_output = self.decode(encoder_output, src_mask, tgt, tgt_mask)
+            logits = self.project(decoder_output[:, -1, :])
+            next_token = torch.argmax(logits, dim=-1, keepdim=True)
+            tgt = torch.cat([tgt, next_token], dim=1)
+
+            finished |= (next_token.squeeze(1) == end_token_id)
+            if finished.all():
+                break
+
+        return tgt[:, 1:]
 
 
 class TransformerWithNewTechniques(nn.Module):

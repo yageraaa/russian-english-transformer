@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from models.core.rms_norm import RMSNorm
-from models.transformer.decoder_layer import DecoderBlockWithNewTechniques
+from models.core.layer_norm import LayerNormalization
+from models.transformer.decoder_layer import DecoderBlockWithNewTechniques, DecoderBlockBaseline
 
 
 class DecoderWithNewTechniques(nn.Module):
@@ -12,6 +13,21 @@ class DecoderWithNewTechniques(nn.Module):
             for _ in range(num_layers)
         ])
         self.norm = RMSNorm(d_model)
+
+    def forward(self, x: torch.Tensor, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt_mask: torch.Tensor):
+        for layer in self.layers:
+            x = layer(x, encoder_output, src_mask, tgt_mask)
+        return self.norm(x)
+
+
+class DecoderBaseline(nn.Module):
+    def __init__(self, d_model: int, num_layers: int, num_heads: int, d_ff: int, dropout: float):
+        super().__init__()
+        self.layers = nn.ModuleList([
+            DecoderBlockBaseline(d_model, num_heads, d_ff, dropout)
+            for _ in range(num_layers)
+        ])
+        self.norm = LayerNormalization(d_model)
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt_mask: torch.Tensor):
         for layer in self.layers:

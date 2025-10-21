@@ -3,6 +3,8 @@ import torch.nn as nn
 from models.core.qk_norm import QKNorm
 from models.core.swiglu import SwiGLU
 from models.core.residual_connection import ResidualConnection
+from models.core.multihead_attention import MultiHeadAttention
+from models.core.feed_forward import FeedForwardLayer
 
 class EncoderBlockWithNewTechniques(nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ff: int, dropout: float):
@@ -10,6 +12,18 @@ class EncoderBlockWithNewTechniques(nn.Module):
         self.self_attn = QKNorm(d_model, num_heads, dropout)
         self.feed_forward = SwiGLU(d_model, d_ff, dropout)
         self.residuals = nn.ModuleList([ResidualConnection(d_model, dropout) for _ in range(2)])
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        x = self.residuals[0](x, lambda x: self.self_attn(x, x, x, mask))
+        return self.residuals[1](x, self.feed_forward)
+
+
+class EncoderBlockBaseline(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int, dropout: float):
+        super().__init__()
+        self.self_attn = MultiHeadAttention(d_model, num_heads, dropout)
+        self.feed_forward = FeedForwardLayer(d_model, d_ff, dropout)
+        self.residuals = nn.ModuleList([ResidualConnection(d_model, dropout, norm_type="layer") for _ in range(2)])
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         x = self.residuals[0](x, lambda x: self.self_attn(x, x, x, mask))
