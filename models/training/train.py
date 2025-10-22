@@ -374,7 +374,12 @@ def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, accelerator)
             accelerator.wait_for_everyone()
             return
 
-        model_dir = Path(cfg.data.model_dir)
+        use_baseline = getattr(cfg.model, 'use_baseline', True)
+        if use_baseline:
+            model_dir = Path("checkpoints_baseline")
+        else:
+            model_dir = Path(cfg.data.model_dir)
+        
         model_dir.mkdir(parents=True, exist_ok=True)
 
         accelerator.print(f"Saving checkpoint to {model_dir}...")
@@ -401,7 +406,7 @@ def save_checkpoint(cfg: DictConfig, epoch, step, model, optimizer, accelerator)
         accelerator.print(f"Checkpoint saved successfully: {checkpoint_path}")
         accelerator.print(f"Latest checkpoint: {latest_path}")
 
-        cleanup_old_checkpoints(cfg, keep_last_n=5)
+        cleanup_old_checkpoints(cfg, keep_last_n=5, use_baseline=use_baseline)
 
         accelerator.wait_for_everyone()
 
@@ -520,8 +525,12 @@ def calculate_bleu(prediction: str, reference: str) -> float:
     return sentence_bleu([ref_tokens], pred_tokens, smoothing_function=SmoothingFunction().method1)
 
 
-def cleanup_old_checkpoints(cfg: DictConfig, keep_last_n: int = 5):
-    model_dir = Path(cfg.data.model_dir)
+def cleanup_old_checkpoints(cfg: DictConfig, keep_last_n: int = 5, use_baseline: bool = True):
+    if use_baseline:
+        model_dir = Path("checkpoints_baseline")
+    else:
+        model_dir = Path(cfg.data.model_dir)
+    
     if not model_dir.exists():
         return
 
@@ -609,13 +618,23 @@ def log_translations_mlflow(model, tokenizer, device, cfg: DictConfig, epoch: in
 
 
 def get_weights_file_path(cfg: DictConfig, epoch: int) -> str:
-    model_dir = Path(cfg.data.model_dir)
+    use_baseline = getattr(cfg.model, 'use_baseline', True)
+    if use_baseline:
+        model_dir = Path("checkpoints_baseline")
+    else:
+        model_dir = Path(cfg.data.model_dir)
+    
     model_dir.mkdir(parents=True, exist_ok=True)
     return str(model_dir / f"{cfg.logging.model_basename}{epoch:02d}.pt")
 
 
 def latest_weights_file_path(cfg: DictConfig) -> Optional[str]:
-    model_dir = Path(cfg.data.model_dir)
+    use_baseline = getattr(cfg.model, 'use_baseline', True)
+    if use_baseline:
+        model_dir = Path("checkpoints_baseline")
+    else:
+        model_dir = Path(cfg.data.model_dir)
+    
     if not model_dir.exists():
         return None
     checkpoints = list(model_dir.glob(f"{cfg.logging.model_basename}*.pt"))
