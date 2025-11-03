@@ -79,7 +79,6 @@ class HuggingFaceModelWrapper:
 
             return translation
         except Exception as e:
-            print(f"Error translating: {e}")
             return ""
 
 
@@ -100,8 +99,22 @@ def test_hf_model(model_wrapper: HuggingFaceModelWrapper, dataset_split, max_sam
         try:
             example = dataset_split[idx]
 
-            src_text = example.get("en", "")
-            tgt_text = example.get("ru", "")
+            if isinstance(example, dict) and "translation" in example:
+                src_text = example["translation"].get("en", "")
+                tgt_text = example["translation"].get("ru", "")
+            elif isinstance(example, dict) and "en" in example and "ru" in example:
+                src_text = example["en"]
+                tgt_text = example["ru"]
+            else:
+                continue
+
+            if not src_text or not tgt_text:
+                continue
+
+            if isinstance(src_text, list):
+                src_text = src_text[0] if src_text else ""
+            if isinstance(tgt_text, list):
+                tgt_text = tgt_text[0] if tgt_text else ""
 
             if not src_text or not tgt_text:
                 continue
@@ -118,14 +131,13 @@ def test_hf_model(model_wrapper: HuggingFaceModelWrapper, dataset_split, max_sam
 
             if len(translations_log) < 10:
                 translations_log.append({
-                    "source": src_text[:100],
-                    "reference": tgt_text[:100],
-                    "translation": translation[:100],
+                    "source": str(src_text)[:100],
+                    "reference": str(tgt_text)[:100],
+                    "translation": str(translation)[:100],
                     "bleu": float(bleu_score)
                 })
 
         except Exception as e:
-            print(f"Error processing sample {idx}: {e}")
             continue
 
     avg_bleu = total_bleu / total_samples if total_samples > 0 else 0
@@ -142,6 +154,12 @@ def main():
     try:
         dataset = load_dataset("opus100", "en-ru", split="train")
         print(f"✓ Dataset loaded: {len(dataset)} samples")
+
+        example = dataset[0]
+        print(f"Dataset structure: {example.keys()}")
+        if "translation" in example:
+            print(f"Translation keys: {example['translation'].keys()}")
+
     except Exception as e:
         print(f"Error loading dataset: {e}")
         return
