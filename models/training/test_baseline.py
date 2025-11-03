@@ -11,6 +11,8 @@ from models.data.dataset import BilingualTranslationDataset, load_hf_dataset
 from models.transformer.transformer import TransformerBaseline
 from tokenizer.tokenizer import Tokenizer
 import re
+import json
+from datetime import datetime
 
 
 def decode_until_end(ids, id_to_token, end_token="<end>"):
@@ -94,11 +96,11 @@ def load_model_from_checkpoint(cfg: DictConfig, tokenizer, checkpoint_path: str,
     return model
 
 
-def run_test(model, test_loader, device, loss_fn, tokenizer, cfg, accelerator):
+def run_test(unwrapped_model, test_loader, device, loss_fn, tokenizer, cfg, accelerator):
     """Run testing on the model."""
     accelerator.wait_for_everyone()
     
-    model.eval()
+    unwrapped_model.eval()
     total_loss = 0
     total_bleu = 0
     total_samples = 0
@@ -118,14 +120,14 @@ def run_test(model, test_loader, device, loss_fn, tokenizer, cfg, accelerator):
                 
                 with torch.amp.autocast('cuda',
                                         dtype=torch.bfloat16 if cfg.training.mixed_precision == 'bf16' else torch.float16 if cfg.training.mixed_precision == 'fp16' else torch.float32):
-                    encoder_output = model.encode(inputs['encoder_input'], inputs['encoder_mask'])
-                    decoder_output = model.decode(
+                    encoder_output = unwrapped_model.encode(inputs['encoder_input'], inputs['encoder_mask'])
+                    decoder_output = unwrapped_model.decode(
                         encoder_output,
                         inputs['encoder_mask'],
                         inputs['decoder_input'],
                         inputs['decoder_mask']
                     )
-                    proj_output = model.project(decoder_output)
+                    proj_output = unwrapped_model.project(decoder_output)
                     
                     loss = loss_fn(
                         proj_output.view(-1, len(tokenizer.en_token_to_id)),
@@ -134,7 +136,7 @@ def run_test(model, test_loader, device, loss_fn, tokenizer, cfg, accelerator):
                 
                 total_loss += loss
                 
-                translated = model.translate_batch(
+                translated = unwrapped_model.translate_batch(
                     inputs['encoder_input'],
                     max_len=cfg.training.seq_len,
                     start_token_id=tokenizer.en_token_to_id['<start>'],
@@ -237,29 +239,14 @@ def test_model(cfg: DictConfig):
     
     model, test_ds = accelerator.prepare(model, test_ds)
     
-    # Override methods for wrapped model
-    def safe_encode(*args, **kwargs):
-        return model.module.encode(*args, **kwargs) if hasattr(model, 'module') else model.encode(*args, **kwargs)
-    
-    def safe_decode(*args, **kwargs):
-        return model.module.decode(*args, **kwargs) if hasattr(model, 'module') else model.decode(*args, **kwargs)
-    
-    def safe_project(*args, **kwargs):
-        return model.module.project(*args, **kwargs) if hasattr(model, 'module') else model.project(*args, **kwargs)
-    
-    def safe_translate_batch(*args, **kwargs):
-        return model.module.translate_batch(*args, **kwargs) if hasattr(model, 'module') else model.translate_batch(*args, **kwargs)
-    
-    model.encode = safe_encode
-    model.decode = safe_decode
-    model.project = safe_project
-    model.translate_batch = safe_translate_batch
+    # Get unwrapped model to avoid recursion issues when calling methods
+    unwrapped_model = accelerator.unwrap_model(model)
     
     accelerator.print("\n" + "="*80)
     accelerator.print("Starting test evaluation...")
     accelerator.print("="*80 + "\n")
     
-    avg_loss, avg_bleu, total_samples = run_test(model, test_ds, device, loss_fn, tokenizer, cfg, accelerator)
+    avg_loss, avg_bleu, total_samples = run_test(unwrapped_model, test_ds, device, loss_fn, tokenizer, cfg, accelerator)
     
     accelerator.print("\n" + "="*80)
     accelerator.print("Test Summary:")
@@ -267,6 +254,61 @@ def test_model(cfg: DictConfig):
     accelerator.print(f"  Average BLEU: {avg_bleu:.4f}")
     accelerator.print(f"  Total Samples: {total_samples}")
     accelerator.print("="*80)
+    
+    # Save results to file
+    if accelerator.is_local_main_process:
+        results = {
+            "checkpoint_path": str(baseline_checkpoint_path),
+            "timestamp": datetime.now().isoformat(),
+            "metrics": {
+                "average_loss": float(avg_loss),
+                "average_bleu": float(avg_bleu),
+                "total_samples": int(total_samples)
+            },
+            "model_config": {
+                "d_model": cfg.model.d_model,
+                "num_layers": cfg.model.num_layers,
+                "num_heads": cfg.model.num_heads,
+                "d_ff": cfg.model.d_ff,
+                "dropout": cfg.training.dropout,
+                "seq_len": cfg.training.seq_len
+            }
+        }
+        
+        # Create results directory
+        results_dir = Path("test_results")
+        results_dir.mkdir(exist_ok=True)
+        
+        # Save as JSON
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        json_path = results_dir / f"baseline_test_results_{timestamp_str}.json"
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
+        
+        # Save as readable text file
+        txt_path = results_dir / f"baseline_test_results_{timestamp_str}.txt"
+        with open(txt_path, 'w', encoding='utf-8') as f:
+            f.write("=" * 80 + "\n")
+            f.write("Baseline Transformer Test Results\n")
+            f.write("=" * 80 + "\n\n")
+            f.write(f"Timestamp: {results['timestamp']}\n")
+            f.write(f"Checkpoint: {baseline_checkpoint_path}\n\n")
+            f.write("Metrics:\n")
+            f.write(f"  Average Loss: {avg_loss:.4f}\n")
+            f.write(f"  Average BLEU: {avg_bleu:.4f}\n")
+            f.write(f"  Total Samples: {total_samples}\n\n")
+            f.write("Model Configuration:\n")
+            f.write(f"  d_model: {cfg.model.d_model}\n")
+            f.write(f"  num_layers: {cfg.model.num_layers}\n")
+            f.write(f"  num_heads: {cfg.model.num_heads}\n")
+            f.write(f"  d_ff: {cfg.model.d_ff}\n")
+            f.write(f"  dropout: {cfg.training.dropout}\n")
+            f.write(f"  seq_len: {cfg.training.seq_len}\n")
+            f.write("=" * 80 + "\n")
+        
+        accelerator.print(f"\n✓ Results saved to:")
+        accelerator.print(f"  JSON: {json_path}")
+        accelerator.print(f"  TXT:  {txt_path}")
 
 
 if __name__ == "__main__":
