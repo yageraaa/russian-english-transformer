@@ -5,7 +5,6 @@ from datasets import load_dataset
 from transformers import (
     M2M100ForConditionalGeneration, M2M100Tokenizer,
     MarianMTModel, MarianTokenizer,
-    AutoTokenizer, AutoModelForSeq2SeqLM
 )
 import re
 import json
@@ -47,17 +46,13 @@ class HuggingFaceModelWrapper:
             if "m2m100" in self.model_name:
                 self.tokenizer = M2M100Tokenizer.from_pretrained(self.model_name)
                 self.model = M2M100ForConditionalGeneration.from_pretrained(self.model_name).to(self.device)
-                self.src_lang = "ru"
-                self.tgt_lang = "en"
+                self.src_lang = "en"
+                self.tgt_lang = "ru"
                 self.model_type = "m2m100"
             elif "opus-mt" in self.model_name:
                 self.tokenizer = MarianTokenizer.from_pretrained(self.model_name)
                 self.model = MarianMTModel.from_pretrained(self.model_name).to(self.device)
                 self.model_type = "marian"
-            else:
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-                self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name).to(self.device)
-                self.model_type = "auto"
 
             self.model.eval()
             print(f"✓ {self.model_name} loaded successfully")
@@ -84,7 +79,7 @@ class HuggingFaceModelWrapper:
 
             return translation
         except Exception as e:
-            print(f"Error translating '{text[:50]}...': {e}")
+            print(f"Error translating: {e}")
             return ""
 
 
@@ -105,8 +100,8 @@ def test_hf_model(model_wrapper: HuggingFaceModelWrapper, dataset_split, max_sam
         try:
             example = dataset_split[idx]
 
-            src_text = example.get("ru", "")
-            tgt_text = example.get("en", "")
+            src_text = example.get("en", "")
+            tgt_text = example.get("ru", "")
 
             if not src_text or not tgt_text:
                 continue
@@ -142,40 +137,27 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
     print("=" * 80)
-    print("Loading OPUS-100 ru-en dataset...")
+
+    print("Loading OPUS-100 en-ru dataset...")
     try:
-        dataset = load_dataset("opus100", "ru-en", split="test", trust_remote_code=True)
+        dataset = load_dataset("opus100", "en-ru", split="train")
         print(f"✓ Dataset loaded: {len(dataset)} samples")
     except Exception as e:
-        print(f"Error loading test split: {e}")
-        print("Trying validation split...")
-        try:
-            dataset = load_dataset("opus100", "ru-en", split="validation", trust_remote_code=True)
-            print(f"✓ Dataset loaded (validation split): {len(dataset)} samples")
-        except Exception as e2:
-            print(f"Error loading validation split: {e2}")
-            print("Trying to load entire dataset...")
-            try:
-                dataset = load_dataset("opus100", "ru-en", trust_remote_code=True)
-                if isinstance(dataset, dict):
-                    dataset = dataset["train"]
-                print(f"✓ Dataset loaded (train split): {len(dataset)} samples")
-            except Exception as e3:
-                print(f"Error loading dataset: {e3}")
-                return
+        print(f"Error loading dataset: {e}")
+        return
 
     max_samples = 100
 
     models_to_test = [
         "facebook/m2m100_418M",
-        "Helsinki-NLP/opus-mt-ru-en",
+        "Helsinki-NLP/opus-mt-en-ru",
         "facebook/m2m100_1.2B"
     ]
 
     all_results = {
         "timestamp": datetime.now().isoformat(),
-        "dataset": "opus100-ru-en",
-        "direction": "Russian to English",
+        "dataset": "opus100-en-ru",
+        "direction": "English to Russian",
         "max_samples": max_samples,
         "total_dataset_size": len(dataset),
         "models": {}
@@ -219,14 +201,14 @@ def main():
 
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    json_path = results_dir / f"opus100_ru_en_test_{timestamp_str}.json"
+    json_path = results_dir / f"opus100_en_ru_test_{timestamp_str}.json"
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(all_results, f, indent=2, ensure_ascii=False)
 
-    txt_path = results_dir / f"opus100_ru_en_test_{timestamp_str}.txt"
+    txt_path = results_dir / f"opus100_en_ru_test_{timestamp_str}.txt"
     with open(txt_path, 'w', encoding='utf-8') as f:
         f.write("=" * 80 + "\n")
-        f.write("HuggingFace Models Test on OPUS-100 RU-EN Dataset\n")
+        f.write("HuggingFace Models Test on OPUS-100 EN-RU Dataset\n")
         f.write("=" * 80 + "\n\n")
         f.write(f"Timestamp: {all_results['timestamp']}\n")
         f.write(f"Dataset: {all_results['dataset']}\n")
@@ -248,8 +230,8 @@ def main():
                     f.write(f"  Sample Translations:\n")
                     for i, sample in enumerate(results['sample_translations'], 1):
                         f.write(f"\n    Example {i}:\n")
-                        f.write(f"      Source (RU): {sample['source']}\n")
-                        f.write(f"      Reference (EN): {sample['reference']}\n")
+                        f.write(f"      Source (EN): {sample['source']}\n")
+                        f.write(f"      Reference (RU): {sample['reference']}\n")
                         f.write(f"      Translation: {sample['translation']}\n")
                         f.write(f"      BLEU: {sample['bleu']:.4f}\n")
 
