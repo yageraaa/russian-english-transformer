@@ -8,6 +8,7 @@ from pathlib import Path
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from accelerate import Accelerator
 from models.data.dataset import BilingualTranslationDataset, load_hf_dataset
+from datasets import load_dataset
 from models.transformer.transformer import TransformerBaseline
 from tokenizer.tokenizer import Tokenizer
 import re
@@ -45,7 +46,6 @@ def calculate_bleu(prediction: str, reference: str) -> float:
 
 
 def load_model_from_checkpoint(cfg: DictConfig, tokenizer, checkpoint_path: str, device):
-    """Load baseline transformer model from checkpoint."""
     print(f"Loading baseline model...")
     
     model = TransformerBaseline(
@@ -68,7 +68,6 @@ def load_model_from_checkpoint(cfg: DictConfig, tokenizer, checkpoint_path: str,
     else:
         state_dict = checkpoint
     
-    # Load state dict with strict=False to handle any minor differences
     missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
     
     if missing_keys:
@@ -97,7 +96,6 @@ def load_model_from_checkpoint(cfg: DictConfig, tokenizer, checkpoint_path: str,
 
 
 def run_test(unwrapped_model, test_loader, device, loss_fn, tokenizer, cfg, accelerator):
-    """Run testing on the model."""
     accelerator.wait_for_everyone()
     
     unwrapped_model.eval()
@@ -169,11 +167,39 @@ def run_test(unwrapped_model, test_loader, device, loss_fn, tokenizer, cfg, acce
     return avg_loss, avg_bleu, total_samples
 
 
+def load_test_dataset(cfg: DictConfig, accelerator=None):
+    test_dataset_name = getattr(cfg.dataset, 'test_dataset_name', 'opus100')
+    test_config_name = getattr(cfg.dataset, 'test_config_name', 'ru-en')
+    test_split = getattr(cfg.dataset, 'test_split', 'test')
+    
+    print_func = accelerator.print if accelerator else print
+    print_func(f"Loading test dataset: {test_dataset_name}/{test_config_name} (split: {test_split})...")
+    
+    try:
+        dataset_dict = load_dataset(test_dataset_name, test_config_name, split=test_split)
+        
+        dataset = {test_split: dataset_dict}
+        
+        print_func(f"Test dataset loaded: {len(dataset_dict)} examples")
+        
+        if len(dataset_dict) > 0:
+            sample = dataset_dict[0]
+            print_func("\nSample translation:")
+            print_func(f"Source ({cfg.language.src_lang}): {sample['translation'][cfg.language.src_lang]}")
+            print_func(f"Target ({cfg.language.tgt_lang}): {sample['translation'][cfg.language.tgt_lang]}")
+        
+        return dataset
+    except Exception as e:
+        print_func(f"Error loading test dataset: {e}")
+        raise
+
+
 def create_test_dataset(cfg: DictConfig, tokenizer, dataset):
-    """Create test dataset."""
+    test_split = getattr(cfg.dataset, 'test_split', 'test')
+    
     test_dataset = BilingualTranslationDataset(
         dataset, tokenizer, cfg.language.src_lang, cfg.language.tgt_lang, cfg.training.seq_len,
-        split=cfg.dataset.test_split if hasattr(cfg.dataset, 'test_split') else cfg.dataset.validation_split
+        split=test_split
     )
     
     return DataLoader(
@@ -198,11 +224,8 @@ def test_model(cfg: DictConfig):
     })
     
     accelerator.print("Loading test dataset from HuggingFace...")
-    dataset = load_hf_dataset(cfg)
-    accelerator.print(f"Test dataset loaded: {len(dataset)} examples")
-    
-    # Find baseline checkpoint
-    # Try multiple possible paths
+    test_dataset = load_test_dataset(cfg, tokenizer)
+
     possible_paths = [
         Path("checkpoints_baseline/transformer_latest.pt"),
         Path(cfg.data.base_dir) / "checkpoints_baseline" / "transformer_latest.pt",
@@ -229,7 +252,7 @@ def test_model(cfg: DictConfig):
     model = load_model_from_checkpoint(cfg, tokenizer, str(baseline_checkpoint_path), device)
     
     accelerator.print("Creating test dataset...")
-    test_ds = create_test_dataset(cfg, tokenizer, dataset)
+    test_ds = create_test_dataset(cfg, tokenizer, test_dataset)
     accelerator.print(f"Test dataset size: {len(test_ds.dataset)}")
     
     loss_fn = nn.CrossEntropyLoss(
@@ -239,7 +262,6 @@ def test_model(cfg: DictConfig):
     
     model, test_ds = accelerator.prepare(model, test_ds)
     
-    # Get unwrapped model to avoid recursion issues when calling methods
     unwrapped_model = accelerator.unwrap_model(model)
     
     accelerator.print("\n" + "="*80)
@@ -255,7 +277,6 @@ def test_model(cfg: DictConfig):
     accelerator.print(f"  Total Samples: {total_samples}")
     accelerator.print("="*80)
     
-    # Save results to file
     if accelerator.is_local_main_process:
         results = {
             "checkpoint_path": str(baseline_checkpoint_path),
@@ -275,17 +296,14 @@ def test_model(cfg: DictConfig):
             }
         }
         
-        # Create results directory
         results_dir = Path("test_results")
         results_dir.mkdir(exist_ok=True)
         
-        # Save as JSON
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         json_path = results_dir / f"baseline_test_results_{timestamp_str}.json"
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
         
-        # Save as readable text file
         txt_path = results_dir / f"baseline_test_results_{timestamp_str}.txt"
         with open(txt_path, 'w', encoding='utf-8') as f:
             f.write("=" * 80 + "\n")

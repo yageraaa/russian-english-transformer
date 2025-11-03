@@ -97,19 +97,28 @@ def load_hf_dataset(cfg):
     print(f"Loading dataset {cfg.dataset.name}/{cfg.dataset.config_name}...")
 
     try:
+        splits_to_load = [cfg.dataset.train_split, cfg.dataset.validation_split]
+        if hasattr(cfg.dataset, 'test_split'):
+            splits_to_load.append(cfg.dataset.test_split)
+        
         dataset = load_dataset(
             cfg.dataset.name,
             cfg.dataset.config_name,
-            split=[cfg.dataset.train_split, cfg.dataset.validation_split]
+            split=splits_to_load
         )
 
         result = {
             cfg.dataset.train_split: dataset[0],
             cfg.dataset.validation_split: dataset[1]
         }
+        
+        if hasattr(cfg.dataset, 'test_split'):
+            result[cfg.dataset.test_split] = dataset[2]
 
         print(f"Train split: {len(result[cfg.dataset.train_split])} examples")
         print(f"Validation split: {len(result[cfg.dataset.validation_split])} examples")
+        if hasattr(cfg.dataset, 'test_split'):
+            print(f"Test split: {len(result[cfg.dataset.test_split])} examples")
 
         if len(result[cfg.dataset.train_split]) > 0:
             sample = result[cfg.dataset.train_split][0]
