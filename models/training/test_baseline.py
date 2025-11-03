@@ -224,7 +224,7 @@ def test_model(cfg: DictConfig):
     })
     
     accelerator.print("Loading test dataset from HuggingFace...")
-    test_dataset = load_test_dataset(cfg, tokenizer)
+    test_dataset = load_test_dataset(cfg, accelerator)
 
     possible_paths = [
         Path("checkpoints_baseline/transformer_latest.pt"),
