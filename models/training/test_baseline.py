@@ -13,6 +13,7 @@ from models.transformer.transformer import TransformerBaseline
 from tokenizer.tokenizer import Tokenizer
 import re
 import json
+import gc
 from datetime import datetime
 
 
@@ -153,9 +154,22 @@ def run_test(unwrapped_model, test_loader, device, loss_fn, tokenizer, cfg, acce
                     total_samples += 1
                 
                 test_iterator.set_postfix(loss=f"{loss:.4f}", bleu=f"{total_bleu/total_samples:.4f}", samples=total_samples)
+                
+                del encoder_output, decoder_output, proj_output, loss, translated
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                gc.collect()
             
+            except torch.cuda.OutOfMemoryError as e:
+                accelerator.print(f"CUDA OOM in test batch {batch_idx}: {e}")
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                accelerator.print("Skipping this test batch...")
+                continue
             except Exception as e:
                 accelerator.print(f"Error in test batch {batch_idx}: {e}")
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 accelerator.print("Skipping this test batch...")
                 continue
     
@@ -204,7 +218,7 @@ def load_test_dataset(cfg: DictConfig, accelerator=None):
         raise
 
 
-def create_test_dataset(cfg: DictConfig, tokenizer, dataset):
+def create_test_dataset(cfg: DictConfig, tokenizer, dataset, accelerator=None):
     test_split = getattr(cfg.dataset, 'test_split', 'test')
     
     test_dataset = BilingualTranslationDataset(
@@ -212,9 +226,13 @@ def create_test_dataset(cfg: DictConfig, tokenizer, dataset):
         split=test_split
     )
     
+    test_batch_size = getattr(cfg.training, 'test_batch_size', min(32, cfg.training.batch_size))
+    print_func = accelerator.print if accelerator else print
+    print_func(f"Using test batch size: {test_batch_size} (training batch size: {cfg.training.batch_size})")
+    
     return DataLoader(
         test_dataset,
-        batch_size=cfg.training.batch_size,
+        batch_size=test_batch_size,
         pin_memory=True,
         num_workers=getattr(cfg.training, 'num_workers', 0)
     )
@@ -262,7 +280,7 @@ def test_model(cfg: DictConfig):
     model = load_model_from_checkpoint(cfg, tokenizer, str(baseline_checkpoint_path), device)
     
     accelerator.print("Creating test dataset...")
-    test_ds = create_test_dataset(cfg, tokenizer, test_dataset)
+    test_ds = create_test_dataset(cfg, tokenizer, test_dataset, accelerator)
     accelerator.print(f"Test dataset size: {len(test_ds.dataset)}")
     
     loss_fn = nn.CrossEntropyLoss(
@@ -277,6 +295,10 @@ def test_model(cfg: DictConfig):
     accelerator.print("\n" + "="*80)
     accelerator.print("Starting test evaluation...")
     accelerator.print("="*80 + "\n")
+    
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
     
     avg_loss, avg_bleu, total_samples = run_test(unwrapped_model, test_ds, device, loss_fn, tokenizer, cfg, accelerator)
     
