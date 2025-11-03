@@ -169,7 +169,9 @@ def run_test(unwrapped_model, test_loader, device, loss_fn, tokenizer, cfg, acce
 
 def load_test_dataset(cfg: DictConfig, accelerator=None):
     test_dataset_name = getattr(cfg.dataset, 'test_dataset_name', 'opus100')
-    test_config_name = getattr(cfg.dataset, 'test_config_name', 'ru-en')
+    # For opus100, use 'en-ru' config (contains both 'en' and 'ru' fields)
+    # We'll use 'ru' as source and 'en' as target from the same dataset
+    test_config_name = getattr(cfg.dataset, 'test_config_name', 'en-ru')
     test_split = getattr(cfg.dataset, 'test_split', 'test')
     
     print_func = accelerator.print if accelerator else print
@@ -184,9 +186,17 @@ def load_test_dataset(cfg: DictConfig, accelerator=None):
         
         if len(dataset_dict) > 0:
             sample = dataset_dict[0]
-            print_func("\nSample translation:")
-            print_func(f"Source ({cfg.language.src_lang}): {sample['translation'][cfg.language.src_lang]}")
-            print_func(f"Target ({cfg.language.tgt_lang}): {sample['translation'][cfg.language.tgt_lang]}")
+            # Check available languages in the dataset
+            available_langs = list(sample['translation'].keys())
+            print_func(f"Available languages in dataset: {available_langs}")
+            
+            if cfg.language.src_lang in sample['translation'] and cfg.language.tgt_lang in sample['translation']:
+                print_func("\nSample translation:")
+                print_func(f"Source ({cfg.language.src_lang}): {sample['translation'][cfg.language.src_lang]}")
+                print_func(f"Target ({cfg.language.tgt_lang}): {sample['translation'][cfg.language.tgt_lang]}")
+            else:
+                print_func(f"Warning: Requested languages ({cfg.language.src_lang}, {cfg.language.tgt_lang}) not found in dataset")
+                print_func(f"Using first available pair: {available_langs[0]} -> {available_langs[1] if len(available_langs) > 1 else 'N/A'}")
         
         return dataset
     except Exception as e:
