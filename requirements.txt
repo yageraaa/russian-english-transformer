@@ -1,0 +1,10 @@
+python-dotenv
+torch
+omegaconf
+tqdm
+datasets
+hydra-core
+mlflow
+nltk
+accelerate
+torchinfo

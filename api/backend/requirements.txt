@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pydantic
+sqlalchemy
+psycopg2-binary
+boto3
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv
+torch
+omegaconf
+python-multipart
+numpy
+torchinfo
